@@ -1,74 +1,51 @@
-package ui
+package tui
 
 import (
-	"context"
+	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/Ruohao1/penta/internal/ui/views"
+	tea "charm.land/bubbletea/v2"
+	viewpkg "github.com/Ruohao1/penta/internal/tui/views"
 )
 
-type RootModel struct {
-	activeView views.View
+type root struct {
+	activeView pentaView
 
-	home    views.HomeModel
-	scan    views.ScanModel
-	console views.ConsoleModel
+	views map[pentaView]tea.Model
 }
 
-func NewRootModel() RootModel {
-	return RootModel{
-		home:    views.NewHomeModel(),
-		scan:    views.NewScanModel(),
-		console: views.NewConsoleModel(),
-	}
+func Run() error {
+	models := make(map[pentaView]tea.Model)
+	models[DashboardView] = viewpkg.DashboardModel()
+
+	initialModel := root{DashboardView, models}
+	p := tea.NewProgram(initialModel)
+    if _, err := p.Run(); err != nil {
+			return fmt.Errorf("Alas, there's been an error: %v", err)
+    }
+		return nil
 }
 
-func RunTUI(ctx context.Context, _ TuiOptions) error {
-	m := NewRootModel()
-	p := tea.NewProgram(
-		m,
-		tea.WithContext(ctx),
-	)
-	_, err := p.Run()
-	return err
+func (m root) Init() tea.Cmd {
+	return m.views[m.activeView].Init()
 }
 
-func (m RootModel) Init() tea.Cmd {
-	return nil
-}
-
-func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		}
+  }
 	var cmd tea.Cmd
-
-	// switch msg := msg.(type) {
-	// case controller.SwitchViewMsg:
-	// 	m.activeView = msg.View
-	// 	return m, nil
-	// }
-
-	switch m.activeView {
-	case views.HomeView:
-		m.home, cmd = m.home.Update(msg)
-	// case ScanView:
-	// 	m.scan.Update(msg)
-	case views.ConsoleView:
-		m.console, cmd = m.console.Update(msg)
-	}
-
+	m.views[m.activeView], cmd = m.views[m.activeView].Update(msg)
 	return m, cmd
 }
 
-func (m RootModel) View() string {
-	switch m.activeView {
-
-	case views.HomeView:
-		return m.home.View()
-	// case ScanView:
-	// 	return m.scan.View()
-	case views.ConsoleView:
-		return m.console.View()
-	default:
-		return "Undefined view"
-	}
+func (m root) View() tea.View {
+	var v tea.View
+	v.Content = m.views[m.activeView].View().Content
+	v.AltScreen = true
+	
+	return v
 }
