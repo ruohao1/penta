@@ -9,9 +9,12 @@ type Pane interface {
 
 	Size() (int, int)
 	SetSize(w, h int)
-	Help() string 
 
-	Focus() 
-	Unfocus()
-	IsFocused() bool
+	Focused() bool
+	SetFocused(focused bool)
+
+	Active() bool
+	SetActive(active bool)
+
+	Help() string 
 }

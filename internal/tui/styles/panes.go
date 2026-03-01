@@ -8,11 +8,12 @@ import (
 
 var DefaultPaneStyle = lipgloss.NewStyle().
 	Border(lipgloss.NormalBorder()).
+	BorderForeground(ColorPaneBorderDefault).
 	Padding(0, 0)
 
-var ActivePaneStyle = DefaultPaneStyle.BorderForeground(lipgloss.Color("5"))
+var ActivePaneStyle = DefaultPaneStyle.BorderForeground(ColorPaneBorderActive)
 
-var FocusedPaneStyle = ActivePaneStyle.BorderForeground(lipgloss.Color("2"))
+var FocusedPaneStyle = ActivePaneStyle.BorderForeground(ColorPaneBorderFocused)
 
 func WithTitle(base lipgloss.Style, title, content string, w, h int) string {
 	b := base.GetBorderStyle()

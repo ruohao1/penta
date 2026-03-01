@@ -7,7 +7,7 @@ import (
 	"github.com/Ruohao1/penta/internal/tui/styles"
 )
 
-var cmdInputStyle = lipgloss.NewStyle().BorderForeground(styles.SecondaryColor).Border(lipgloss.NormalBorder()).Padding(0,1)
+var cmdInputStyle = lipgloss.NewStyle().BorderForeground(styles.ColorPaneBorderActive).Border(lipgloss.NormalBorder()).Padding(0, 1)
 
 type CmdInputModel struct {
 	textInput textinput.Model
@@ -59,4 +59,8 @@ func (m *CmdInputModel) View() tea.View {
 func (m *CmdInputModel) Submit() tea.Cmd {
 	m.textInput.Reset()
 	return nil
+}
+
+func (m *CmdInputModel) Reset() {
+	m.textInput.Reset()
 }

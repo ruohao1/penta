@@ -84,6 +84,7 @@ func (m root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.commandModel.Submit()
 			case "esc", "escape":
 				m.cmdOpen = false
+				m.commandModel.Reset()
 				return m, nil
 			}
 		}
