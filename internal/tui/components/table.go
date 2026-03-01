@@ -4,20 +4,19 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/Ruohao1/penta/internal/tui/messages"
+	"github.com/Ruohao1/penta/internal/tui/styles"
 )
 
-var baseStyle = lipgloss.NewStyle().
-	Padding(0, 0).
-	Margin(0, 0)
-
 type tablePane struct {
-	table         table.Model
-	width, height int
-	columns       []Column
+	table   table.Model
+	columns []Column
 
 	styles table.Styles
 
-	isFocused bool
+	width, height int
+	active        bool
+	focused       bool
 }
 
 type Column struct {
@@ -45,13 +44,18 @@ func TablePane(columns []Column) *tablePane {
 	)
 
 	s := table.DefaultStyles()
-	s.Cell = s.Cell
 	s.Header = s.Header.BorderStyle(lipgloss.NormalBorder()).BorderBottom(true)
-	s.Selected = s.Selected.Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230")).Bold(true)
+	s.Selected = s.Selected.Background(styles.ColorSurfaceAccent).Foreground(styles.ColorTextPrimary).Bold(true)
 
 	t.SetStyles(s)
 
-	return &tablePane{t, 0, 0, columns, s, false}
+	return &tablePane{
+		table:   t,
+		columns: columns,
+		styles:  s,
+		active:  false,
+		focused: false,
+	}
 }
 
 func (m tablePane) Init() tea.Cmd { return nil }
@@ -59,16 +63,11 @@ func (m tablePane) Init() tea.Cmd { return nil }
 func (m *tablePane) Update(msg tea.Msg) (Pane, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
+	case messages.PaneSizeMsg:
+		m.SetSize(msg.Width, msg.Height)
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "esc":
-			if m.table.Focused() {
-				m.table.Blur()
-			} else {
-				m.table.Focus()
-			}
-		case "q", "ctrl+c":
-			return m, tea.Quit
 		case "enter":
 			return m, tea.Batch(
 				tea.Printf("Let's go to %s!", m.table.SelectedRow()[1]),
@@ -80,53 +79,22 @@ func (m *tablePane) Update(msg tea.Msg) (Pane, tea.Cmd) {
 }
 
 func styleOverhead(s lipgloss.Style) int {
-	// width of rendered 1-char cell minus 1 = overhead (padding + margins + borders in that style)
 	return lipgloss.Width(s.Render("X")) - 1
 }
 
 func (p *tablePane) View() tea.View {
-	p.table.SetHeight(p.height)
-	p.table.SetWidth(p.width)
-
-	styles := p.styles
-
-	// Worst-case: selected rows can be widest (depends on your styles).
-	cellOH := styleOverhead(styles.Cell)
-	selOH  := styleOverhead(styles.Selected)
-	hdrOH  := styleOverhead(styles.Header)
-
-	perCellOH := max(cellOH, selOH, hdrOH)
-
-	numCols := len(p.columns)
-
-	// Table also inserts gaps between columns (commonly 1 space). Measure or assume 1.
-	// If you want to be 100% sure, set it yourself (see note below).
-
-	available := p.width - (numCols * perCellOH)
-	available = max(1, available)
-
-	// Now allocate column content widths based on 'available'
-	cols := p.table.Columns()
-	used := 0
-	for i := 0; i < len(cols)-1; i++ {
-		w := int(float64(available) * float64(p.columns[i].WidthPercent) / 100)
-		w = max(1, w)
-		cols[i].Width = w
-		used += w
-	}
-	last := max(1, available-used)
-	cols[len(cols)-1].Width = last
-	p.table.SetColumns(cols)
-
 	out := p.table.View()
+	var paneStyle lipgloss.Style
+	switch {
+	case p.focused:
+		paneStyle = styles.FocusedPaneStyle
+	case p.active:
+		paneStyle = styles.ActivePaneStyle
+	default:
+		paneStyle = styles.DefaultPaneStyle
+	}
 
-	// Hard contract clamp: never exceed pane width/height even if table internals change
-	out = lipgloss.NewStyle().
-		Width(p.width).
-		Height(p.height).
-		MaxWidth(p.width).
-		MaxHeight(p.height).
-		Render(out)
+	out = styles.WithTitle(paneStyle, "Table", out, p.width, p.height)
 
 	return tea.NewView(out)
 }
@@ -134,6 +102,32 @@ func (p *tablePane) View() tea.View {
 func (m *tablePane) SetSize(width, height int) {
 	m.width = width
 	m.height = height
+
+	stylesTbl := m.styles
+
+	cellOH := styleOverhead(stylesTbl.Cell)
+	hdrOH := styleOverhead(stylesTbl.Header)
+	selOH := styleOverhead(stylesTbl.Selected)
+	perCellOH := max(cellOH, max(hdrOH, selOH))
+
+	numCols := len(m.columns)
+	colGap := max(0, numCols-1)
+	available := m.width - (numCols * perCellOH) - colGap
+	available = max(1, available)
+
+	cols := m.table.Columns()
+	used := 0
+	for i := 0; i < len(cols)-1; i++ {
+		w := max(1, available*m.columns[i].WidthPercent/100)
+		cols[i].Width = w
+		used += w
+	}
+	if len(cols) > 0 {
+		cols[len(cols)-1].Width = max(1, available-used)
+	}
+	m.table.SetColumns(cols)
+	m.table.SetHeight(max(1, m.height-2)) // Account for borders.
+	m.table.SetWidth(max(1, m.width-2))   // Account for borders
 }
 
 func (m *tablePane) SetRows(rows []table.Row) {
@@ -154,16 +148,23 @@ func (m *tablePane) Size() (int, int) {
 	return m.width, m.height
 }
 
-func (m *tablePane) Focus() {
-	m.isFocused = true
-	m.table.Focus()
+func (m *tablePane) Focused() bool {
+	return m.focused
 }
 
-func (m *tablePane) Unfocus() {
-	m.isFocused = false
-	m.table.Blur()
+func (m *tablePane) SetFocused(focused bool) {
+	m.focused = focused
+	if focused {
+		m.table.Focus()
+	} else {
+		m.table.Blur()
+	}
 }
 
-func (m *tablePane) IsFocused() bool {
-	return m.isFocused
+func (m *tablePane) Active() bool {
+	return m.active
+}
+
+func (m *tablePane) SetActive(active bool) {
+	m.active = active
 }

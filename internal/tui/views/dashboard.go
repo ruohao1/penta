@@ -3,7 +3,9 @@ package views
 import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/Ruohao1/penta/internal/model"
 	"github.com/Ruohao1/penta/internal/tui/components"
+	"github.com/Ruohao1/penta/internal/tui/styles"
 )
 
 type dashboardPane int
@@ -11,6 +13,7 @@ type dashboardPane int
 const (
 	streamPane dashboardPane = iota
 	logPane
+	statusPane
 )
 
 type dashboard struct {
@@ -24,15 +27,16 @@ type dashboard struct {
 
 func DashboardModel() tea.Model {
 	columns := []components.Column{
-		{Title: "Rank", WidthPercent: 20},
+		{Title: "Status", WidthPercent: 20},
 		{Title: "City", WidthPercent: 20},
 		{Title: "Country", WidthPercent: 30},
 		{Title: "Population", WidthPercent: 30},
 	}
 
 	panes := map[dashboardPane]components.Pane{
+		logPane:    components.LogPane(),
 		streamPane: components.TablePane(columns),
-		logPane:    components.TablePane(columns),
+		statusPane: components.TablePane(columns),
 	}
 	return dashboard{
 		focusedPane: streamPane,
@@ -50,56 +54,83 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
-		paneOuterH := max(1, m.height-2)
-		paneInnerH := max(1, paneOuterH-paneStyle.GetVerticalFrameSize())
+		bodyH := max(1, m.height-2)
 
-		leftOuterW := m.width * 30 / 100
-		rightOuterW := m.width - leftOuterW
+		streamH:= bodyH * 80 / 100
+		logH := bodyH - streamH
 
-		leftW := max(1, leftOuterW-paneStyle.GetHorizontalFrameSize())
-		rightW := max(1, rightOuterW-paneStyle.GetHorizontalFrameSize())
+		leftW := m.width * 30 / 100
+		rightW := m.width - leftW
 
-		m.panes[logPane].SetSize(leftW, paneInnerH)
-		m.panes[streamPane].SetSize(rightW, paneInnerH)
+		m.panes[statusPane].SetSize(leftW, bodyH)
+		m.panes[streamPane].SetSize(rightW, streamH)
+		m.panes[logPane].SetSize(rightW, logH)
 		return m, nil
 	}
 
-	if m.focusing {
-		if key, ok := msg.(tea.KeyPressMsg); ok {
-			if key.String() == "esc" || key.String() == "escape" {
-				m.focusing = false
-				return m, nil
+	if _, ok := msg.(model.Event); ok {
+		cmds := make([]tea.Cmd, 0, len(m.panes))
+		for key, child := range m.panes {
+			updated, cmd := child.Update(msg)
+			m.panes[key] = updated
+			if cmd != nil {
+				cmds = append(cmds, cmd)
 			}
 		}
-
-		child, ok := m.panes[m.focusedPane]
-		if !ok {
-			return m, nil
-		}
-		updated, cmd := child.Update(msg)
-		m.panes[m.focusedPane] = updated
-		return m, cmd
+		return m, tea.Batch(cmds...)
 	}
 
+	if m.focusing {
+		return m.handleFocusing(msg)
+	}
+
+	return m.handleDefault(msg)
+}
+
+func (m dashboard) handleFocusing(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
+		if key.String() == "esc" || key.String() == "escape" {
+			m.focusing = false
+			m.panes[m.focusedPane].SetActive(false)
+			return m, nil
+		}
+	}
+
+	child, ok := m.panes[m.focusedPane]
+	if !ok {
+		return m, nil
+	}
+	updated, cmd := child.Update(msg)
+	m.panes[m.focusedPane] = updated
+	return m, cmd
+}
+
+func (m dashboard) handleDefault(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "tab":
 			n := len(m.panes)
+			m.panes[m.focusedPane].SetFocused(false)
 			if n > 0 {
 				m.focusedPane = dashboardPane((int(m.focusedPane) + 1) % n)
 			}
+			m.panes[m.focusedPane].SetFocused(true)
 		case "shift+tab":
 			n := len(m.panes)
+			m.panes[m.focusedPane].SetFocused(false)
 			if n > 0 {
 				m.focusedPane = dashboardPane((int(m.focusedPane) - 1 + n) % n)
 			}
+			m.panes[m.focusedPane].SetFocused(true)
 		case "enter":
 			m.focusing = true
+			m.panes[m.focusedPane].SetActive(true)
+
 		case "p":
-			leftw, lefth := m.panes[logPane].Size()
+			leftw, lefth := m.panes[statusPane].Size()
 			rightw, righth := m.panes[streamPane].Size()
 
-			return m, tea.Printf("log pane size: %dx%d, stream pane size: %dx%d", leftw, lefth, rightw, righth)
+			return m, tea.Printf("status pane size: %dx%d, stream pane size: %dx%d", leftw, lefth, rightw, righth)
 		}
 	}
 
@@ -108,25 +139,10 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 var (
 	topBarStyle = lipgloss.NewStyle().
-			Bold(true).
-			Padding(0, 1).
-			Foreground(lipgloss.Color("230")).
-			Background(lipgloss.Color("62"))
-
-	paneStyle = lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder()).
-			Padding(0, 0)
-
-	activePaneStyle = lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder()).
-			BorderForeground(lipgloss.Color("69")).
-			Padding(0, 0)
-
-	selectedPaneStyle = lipgloss.NewStyle().
-				Border(lipgloss.NormalBorder()).
-				BorderForeground(lipgloss.Color("205")).
-				Bold(true).
-				Padding(0, 0)
+		Bold(true).
+		Padding(0, 1).
+		Foreground(styles.ColorTextPrimary).
+		Background(styles.ColorSurfaceAccent)
 )
 
 func (m dashboard) View() tea.View {
@@ -135,46 +151,18 @@ func (m dashboard) View() tea.View {
 		return tea.NewView("loading...")
 	}
 
-	topH := 1
-	helpH := 1
-	bodyH := max(1, h-topH-helpH)
+	topBar := topBarStyle.Width(w).Height(1).Render("Penta Dashboard")
 
-	leftW := w * 30 / 100
-	rightW := w - leftW
+	streamPaneView := m.panes[streamPane].View().Content
+	statusPaneView := m.panes[statusPane].View().Content
+	logPaneView := m.panes[logPane].View().Content
 
-	topBar := topBarStyle.Width(w).Height(topH).Render("Penta Dashboard")
-
-	streamView := m.panes[streamPane].View().Content
-	logView := m.panes[logPane].View().Content
-
-	streamPaneView := paneStyle.Width(rightW).Height(bodyH).Render(streamView)
-	logPaneView := paneStyle.Width(leftW).Height(bodyH).Render(logView)
-
-	switch m.focusedPane {
-	case streamPane:
-		streamPaneView = activePaneStyle.Width(rightW).Height(bodyH).Render(streamView)
-	case logPane:
-		logPaneView = activePaneStyle.Width(leftW).Height(bodyH).Render(logView)
-	}
-	help := "tab: next pane | shift-tab: prev pane | enter: focus pane | esc: unfocus pane"
+	help := "Tab: Switch Pane | Enter: Focus Pane | Esc: Unfocus Pane"
 	if m.focusing {
-		switch m.focusedPane {
-		case streamPane:
-			streamPaneView = selectedPaneStyle.Width(rightW).Height(bodyH).Render(streamView)
-		case logPane:
-			logPaneView = selectedPaneStyle.Width(leftW).Height(bodyH).Render(logView)
-		}
 		help = m.panes[m.focusedPane].Help()
 	}
-	body := lipgloss.JoinHorizontal(lipgloss.Top, logPaneView, streamPaneView)
+
+	body := lipgloss.JoinHorizontal(lipgloss.Top, statusPaneView, lipgloss.JoinVertical(lipgloss.Left, streamPaneView, logPaneView))
 	return tea.NewView(
 		lipgloss.JoinVertical(lipgloss.Left, topBar, body, help))
 }
-
-// func (m dashboard) leftOuterWidth() int {
-// 	return m.width * 30 / 100
-// }
-//
-// func (m dashboard) rightOuterWidth() int {
-// 	return m.width - m.leftOuterWidth()
-// }
