@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Ruohao1/penta/internal/model"
+	"github.com/Ruohao1/penta/internal/core/types"
 )
 
-func Resolve(portExpr []string) ([]model.Port, error) {
+func Resolve(portExpr []string) ([]types.Port, error) {
 	partsExpr := strings.TrimSpace(strings.Join(portExpr, ","))
 	if partsExpr == "" {
 		return defaultPorts(), nil
@@ -17,7 +17,7 @@ func Resolve(portExpr []string) ([]model.Port, error) {
 
 	parts := strings.Split(partsExpr, ",")
 
-	ports := make([]model.Port, 0, 64)
+	ports := make([]types.Port, 0, 64)
 
 	for _, expr := range parts {
 		expr = strings.TrimSpace(expr)
@@ -46,7 +46,7 @@ func Resolve(portExpr []string) ([]model.Port, error) {
 		if p < 1 || p > 65535 {
 			return nil, fmt.Errorf("invalid port %d", p)
 		}
-		ports = append(ports, model.Port{Number: p})
+		ports = append(ports, types.Port{Number: p})
 	}
 
 	if len(ports) == 0 {
@@ -56,7 +56,7 @@ func Resolve(portExpr []string) ([]model.Port, error) {
 	return dedupeSort(ports), nil
 }
 
-func expandRange(expr string) ([]model.Port, error) {
+func expandRange(expr string) ([]types.Port, error) {
 	// enforce exactly "start-end"
 	if strings.Count(expr, "-") != 1 {
 		return nil, fmt.Errorf("invalid port range %q", expr)
@@ -80,37 +80,37 @@ func expandRange(expr string) ([]model.Port, error) {
 		return nil, fmt.Errorf("invalid port range %q", expr)
 	}
 
-	out := make([]model.Port, 0, end-start+1)
+	out := make([]types.Port, 0, end-start+1)
 	for i := start; i <= end; i++ {
-		out = append(out, model.Port{Number: i})
+		out = append(out, types.Port{Number: i})
 	}
 	return out, nil
 }
 
-func allPorts() []model.Port {
-	out := make([]model.Port, 0, 65535)
+func allPorts() []types.Port {
+	out := make([]types.Port, 0, 65535)
 	for p := 1; p <= 65535; p++ {
-		out = append(out, model.Port{Number: p})
+		out = append(out, types.Port{Number: p})
 	}
 	return out
 }
 
-func dedupeSort(in []model.Port) []model.Port {
+func dedupeSort(in []types.Port) []types.Port {
 	seen := make(map[int]struct{}, len(in))
-	out := make([]model.Port, 0, len(in))
+	out := make([]types.Port, 0, len(in))
 
 	for _, p := range in {
 		if _, ok := seen[p.Number]; ok {
 			continue
 		}
 		seen[p.Number] = struct{}{}
-		out = append(out, model.Port{Number: p.Number})
+		out = append(out, types.Port{Number: p.Number})
 	}
 
-	slices.SortFunc(out, func(a, b model.Port) int { return a.Number - b.Number })
+	slices.SortFunc(out, func(a, b types.Port) int { return a.Number - b.Number })
 	return out
 }
 
-func defaultPorts() []model.Port {
-	return []model.Port{{Number: 22}, {Number: 80}, {Number: 443}}
+func defaultPorts() []types.Port {
+	return []types.Port{{Number: 22}, {Number: 80}, {Number: 443}}
 }

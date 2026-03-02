@@ -16,5 +16,5 @@ type Pane interface {
 	Active() bool
 	SetActive(active bool)
 
-	Help() string 
+	Help() string
 }

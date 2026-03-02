@@ -3,7 +3,7 @@ package views
 import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/Ruohao1/penta/internal/model"
+	"github.com/Ruohao1/penta/internal/core/events"
 	"github.com/Ruohao1/penta/internal/tui/components"
 	"github.com/Ruohao1/penta/internal/tui/styles"
 )
@@ -56,7 +56,7 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		bodyH := max(1, m.height-2)
 
-		streamH:= bodyH * 80 / 100
+		streamH := bodyH * 80 / 100
 		logH := bodyH - streamH
 
 		leftW := m.width * 30 / 100
@@ -68,7 +68,7 @@ func (m dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if _, ok := msg.(model.Event); ok {
+	if _, ok := msg.(events.Event); ok {
 		cmds := make([]tea.Cmd, 0, len(m.panes))
 		for key, child := range m.panes {
 			updated, cmd := child.Update(msg)

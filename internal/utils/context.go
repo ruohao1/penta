@@ -4,12 +4,14 @@ import (
 	"context"
 
 	"github.com/Ruohao1/penta/internal/config"
+	"github.com/Ruohao1/penta/internal/core/sinks"
 	"github.com/rs/zerolog"
 )
 
 type (
 	ctxLoggerKey struct{}
 	ctxConfigKey struct{}
+	ctxSinkKey   struct{}
 )
 
 func WithLogger(ctx context.Context, l zerolog.Logger) context.Context {
@@ -31,4 +33,12 @@ func WithConfig(ctx context.Context, cfg *config.Config) context.Context {
 func ConfigFrom(ctx context.Context) *config.Config {
 	cfg, _ := ctx.Value(ctxConfigKey{}).(*config.Config)
 	return cfg
+}
+
+func WithSink(ctx context.Context, s sinks.Sink) context.Context {
+	return context.WithValue(ctx, ctxSinkKey{}, s)
+}
+func SinkFrom(ctx context.Context) sinks.Sink {
+	s, _ := ctx.Value(ctxSinkKey{}).(sinks.Sink)
+	return s
 }

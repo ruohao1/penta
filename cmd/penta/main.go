@@ -3,11 +3,11 @@ package main
 import (
 	"os"
 
-	"github.com/Ruohao1/penta/internal/app"
+	"github.com/Ruohao1/penta/internal/cli"
 )
 
 func main() {
-	if err := app.Execute(); err != nil {
+	if err := cli.Execute(); err != nil {
 		os.Exit(1)
 	}
 }

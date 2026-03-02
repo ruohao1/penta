@@ -5,7 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/Ruohao1/penta/internal/model"
+	"github.com/Ruohao1/penta/internal/core/events"
 	"github.com/Ruohao1/penta/internal/tui/components"
 	viewpkg "github.com/Ruohao1/penta/internal/tui/views"
 )
@@ -19,14 +19,14 @@ type root struct {
 	views      map[pentaView]tea.Model
 	activeView pentaView
 
-	events <-chan model.Event
+	events <-chan events.Event
 }
 
 func Run() error {
 	return RunWithEvents(nil)
 }
 
-func RunWithEvents(events <-chan model.Event) error {
+func RunWithEvents(events <-chan events.Event) error {
 	models := make(map[pentaView]tea.Model)
 	models[DashboardView] = viewpkg.DashboardModel()
 
@@ -103,7 +103,7 @@ func (m root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.views[m.activeView], cmd = m.views[m.activeView].Update(msg)
 
 	if m.events != nil {
-		if _, ok := msg.(model.Event); ok {
+		if _, ok := msg.(events.Event); ok {
 			return m, tea.Batch(cmd, waitForEvent(m.events))
 		}
 	}
@@ -129,7 +129,7 @@ func (m root) View() tea.View {
 	return tea.View{Content: base, AltScreen: true}
 }
 
-func waitForEvent(events <-chan model.Event) tea.Cmd {
+func waitForEvent(events <-chan events.Event) tea.Cmd {
 	return func() tea.Msg {
 		ev, ok := <-events
 		if !ok {

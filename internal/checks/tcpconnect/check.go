@@ -6,15 +6,15 @@ import (
 	"time"
 
 	"github.com/Ruohao1/penta/internal/checks"
-	"github.com/Ruohao1/penta/internal/model"
+	"github.com/Ruohao1/penta/internal/core/types"
 	"github.com/Ruohao1/penta/internal/netprobe"
 )
 
 var _ checks.Checker = (*Checker)(nil)
 
 type Input struct {
-	Endpoint model.Endpoint
-	Opts     model.RunOptions
+	Endpoint types.Endpoint
+	Opts     types.RunOptions
 }
 
 type Checker struct {
@@ -34,16 +34,16 @@ func (p *Checker) Check() checks.CheckFn {
 			return fmt.Errorf("%s: want %T, got %T", p.Name(), Input{}, in)
 		}
 
-		finding := model.Finding{
+		finding := types.Finding{
 			ObservedAt: time.Now().UTC(),
 			Check:      p.Name(),
-			Proto:      model.ProtocolTCP,
+			Proto:      types.ProtocolTCP,
 			Endpoint:   req.Endpoint,
 			Severity:   "info",
 			Meta:       map[string]any{},
 		}
 
-		if req.Endpoint.Kind != model.EndpointNet {
+		if req.Endpoint.Kind != types.EndpointNet {
 			finding.Severity = "error"
 			finding.Status = "unsupported_endpoint_kind"
 			finding.Meta["endpoint_kind"] = req.Endpoint.Kind

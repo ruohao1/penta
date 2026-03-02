@@ -99,4 +99,3 @@ func (v *logPaneView) SetSize(w, h int) {
 func (v logPaneView) Help() string {
 	return "Log pane help: (not implemented yet)"
 }
-

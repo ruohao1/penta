@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"runtime"
 
-	"github.com/Ruohao1/penta/internal/model"
+	"github.com/Ruohao1/penta/internal/core/types"
 	"github.com/vishvananda/netlink"
 )
 
@@ -15,42 +15,50 @@ type arpProber struct{}
 
 func (p *arpProber) Name() string { return "arp" }
 
-func (p *arpProber) Probe(ctx context.Context, target model.Target, opts model.RunOptions) (model.Finding, error) {
-	host := target.Host
-	host.State = model.HostStateUnknown
-
-	finding := model.Finding{
-		Check: "arp_probe",
-		Proto: model.ProtocolARP,
-		Host:  host,
-		Meta:  map[string]any{},
+func (p *arpProber) Probe(ctx context.Context, target types.Target, opts types.RunOptions) (types.Finding, error) {
+	addr := target.IP
+	if !addr.IsValid() {
+		return types.Finding{
+			Check:    "arp_probe",
+			Proto:    types.ProtocolARP,
+			Severity: "error",
+			Status:   "invalid_target",
+			Meta:     map[string]any{"raw": target.Raw},
+		}, nil
 	}
 
-	if !canUseARP(target) {
-		finding.Reason = fmt.Sprintf("arp_unsupported")
+	finding := types.Finding{
+		Check:    "arp_probe",
+		Proto:    types.ProtocolARP,
+		Severity: "info",
+		Status:   "unknown",
+		Endpoint: types.NewEndpointNet(addr.String(), 0),
+		Meta:     map[string]any{"addr": addr.String()},
+	}
+
+	if !canUseARP(addr) {
+		finding.Status = "unsupported"
+		finding.Meta["reason"] = "arp_unsupported"
 		return finding, nil
 	}
 
-	neigh, err := lookupARP(host.Addr)
+	neigh, err := lookupARP(addr)
 	if err != nil {
-		host.State = model.HostStateDown
-
+		finding.Status = "down"
 		finding.Meta["err"] = err.Error()
 		return finding, nil
 	}
 
 	switch neigh.State {
 	case netlink.NUD_REACHABLE, netlink.NUD_STALE, netlink.NUD_DELAY, netlink.NUD_PROBE:
-		host.State = model.HostStateUp
-		host.MAC = neigh.HardwareAddr.String()
-
-		finding.Reason = "arp_reachable"
+		finding.Status = "up"
+		finding.Meta["mac"] = neigh.HardwareAddr.String()
+		finding.Meta["reason"] = "arp_reachable"
 		return finding, nil
 
 	case netlink.NUD_INCOMPLETE, netlink.NUD_FAILED:
-		host.State = model.HostStateDown
-
-		finding.Reason = "arp_incomplete"
+		finding.Status = "down"
+		finding.Meta["reason"] = "arp_incomplete"
 		return finding, nil
 	}
 	return finding, nil
@@ -94,8 +102,8 @@ func lookupLinkIndex(ip netip.Addr) (int, error) {
 	return -1, fmt.Errorf("link not found for ip %s", ip.String())
 }
 
-func canUseARP(target model.Target) bool {
-	if !target.Host.Addr.Is4() || runtime.GOOS != "linux" {
+func canUseARP(addr netip.Addr) bool {
+	if !addr.Is4() || runtime.GOOS != "linux" {
 		return false
 	}
 	ifaces, _ := net.Interfaces()
@@ -106,7 +114,7 @@ func canUseARP(target model.Target) bool {
 			if !ok {
 				continue
 			}
-			if ipNet.IP.To4() != nil && ipNet.Contains(target.Host.Addr.AsSlice()) {
+			if ipNet.IP.To4() != nil && ipNet.Contains(addr.AsSlice()) {
 				return true // same L2 subnet
 			}
 		}
