@@ -1,14 +1,8 @@
 package cli
 
 import (
-	"io"
-	"os"
-
-	"github.com/Ruohao1/penta/internal/config"
-	"github.com/Ruohao1/penta/internal/core/sinks"
-	"github.com/Ruohao1/penta/internal/core/types"
-	"github.com/Ruohao1/penta/internal/utils"
-	"github.com/rs/zerolog"
+	"github.com/ruohao1/penta/internal/config"
+	"github.com/ruohao1/penta/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -19,74 +13,69 @@ func Execute() error {
 }
 
 func newRootCmd() *cobra.Command {
-	var opts types.GlobalOptions
+	var (
+		configPath string
+		runCfg     = runtime.DefaultConfig()
+	)
 
 	cmd := &cobra.Command{
 		Use:          "penta",
 		Short:        "Ultimate pentest CLI engine",
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			var lvl zerolog.Level
-			switch {
-			case opts.Verbosity >= 3:
-				lvl = zerolog.TraceLevel // -vvv and beyond
-			case opts.Verbosity == 2:
-				lvl = zerolog.DebugLevel // -vv
-			case opts.Verbosity == 1:
-				lvl = zerolog.InfoLevel // -v
-			default:
-				lvl = zerolog.WarnLevel // no -v
-			}
-			cfg := config.LoadConfig()
-
-			runSink := sinks.NewPentaSink(sinks.SinkOptions{
-				Human:   opts.Human,
-				Verbose: opts.Verbosity,
-				Out:     cmd.OutOrStdout(),
-				Err:     cmd.ErrOrStderr(),
-				// NDJSON: file writer if --log-file/--output is set
-			})
-
-			logFile, err := os.OpenFile("/tmp/penta.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+			cfg, err := config.Load(configPath)
 			if err != nil {
 				return err
 			}
-			logger := zerolog.New(io.MultiWriter(cmd.ErrOrStderr(), logFile)).
-				Level(lvl).
-				With().
-				Timestamp().
-				Logger()
 
-			ctx := cmd.Context()
-			ctx = utils.WithLogger(ctx, logger)
-			ctx = utils.WithConfig(ctx, cfg)
-			ctx = utils.WithSink(ctx, runSink)
-			cmd.SetContext(ctx)
-			return nil
-		},
-		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-			if s := utils.SinkFrom(cmd.Context()); s != nil {
-				return s.Close()
+			resolved := cfg.ToRuntimeConfig()
+			if cmd.Flags().Changed("fail-fast") {
+				resolved.FailFast = runCfg.FailFast
 			}
-			return nil
-		},
+			if cmd.Flags().Changed("buffer-size") {
+				resolved.BufferSize = runCfg.BufferSize
+			}
+			if cmd.Flags().Changed("workers") {
+				resolved.Workers = runCfg.Workers
+			}
+			if cmd.Flags().Changed("max-rate") {
+				resolved.MaxRate = runCfg.MaxRate
+			}
+			if cmd.Flags().Changed("rate-burst") {
+				resolved.RateBurst = runCfg.RateBurst
+			}
+			if cmd.Flags().Changed("max-retries") {
+				resolved.MaxRetries = runCfg.MaxRetries
+			}
+			if cmd.Flags().Changed("retry-backoff") {
+				resolved.RetryBackoff = runCfg.RetryBackoff
+			}
+			if cmd.Flags().Changed("timeout") {
+				resolved.Timeout = runCfg.Timeout
+			}
 
-		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := config.WithRuntimeConfig(cmd.Context(), resolved)
+			cmd.SetContext(ctx)
 			return nil
 		},
 	}
 
-	cmd.PersistentFlags().BoolVar(&opts.Human, "human", true, "human-friendly log output")
-	cmd.PersistentFlags().CountVarP(&opts.Verbosity, "verbose", "v", "increase verbosity (-v, -vv, -vvv)")
-	cmd.PersistentFlags().StringVar(&opts.LogFile, "log-file", "", "optional log file path")
+	cmd.PersistentFlags().StringVar(&configPath, "config", "", "config file path (default: ~/.config/penta/config.yaml)")
+	cmd.PersistentFlags().BoolVar(&runCfg.FailFast, "fail-fast", runCfg.FailFast, "stop run on first stage error")
+	cmd.PersistentFlags().IntVar(&runCfg.BufferSize, "buffer-size", runCfg.BufferSize, "pipeline buffer size")
+	cmd.PersistentFlags().IntVarP(&runCfg.Workers, "workers", "w", runCfg.Workers, "default workers per stage")
+	cmd.PersistentFlags().Float64Var(&runCfg.MaxRate, "max-rate", runCfg.MaxRate, "default max stage rate (RPS); 0 disables")
+	cmd.PersistentFlags().IntVar(&runCfg.RateBurst, "rate-burst", runCfg.RateBurst, "default stage rate burst")
+	cmd.PersistentFlags().IntVar(&runCfg.MaxRetries, "max-retries", runCfg.MaxRetries, "default max retries per stage item")
+	cmd.PersistentFlags().DurationVar(&runCfg.RetryBackoff, "retry-backoff", runCfg.RetryBackoff, "default retry backoff per stage item")
+	cmd.PersistentFlags().DurationVar(&runCfg.Timeout, "timeout", runCfg.Timeout, "default timeout per stage item")
 
 	return cmd
 }
 
 func init() {
-	// rootCmd.AddCommand(NewSessionCmd())
-	rootCmd.AddCommand(NewScanCmd())
-	rootCmd.AddCommand(newXSSCmd())
+	// rootCmd.AddCommand(NewScanCmd())
+	// rootCmd.AddCommand(newXSSCmd())
 	rootCmd.AddCommand(newTUICmd())
-	// rootCmd.AddCommand(NewBruteCmd())
+	rootCmd.AddCommand(newWebCmd())
 }

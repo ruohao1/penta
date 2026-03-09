@@ -4,7 +4,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/Ruohao1/penta/internal/tui/styles"
+	"github.com/ruohao1/penta/internal/tui/styles"
 )
 
 var cmdInputStyle = lipgloss.NewStyle().BorderForeground(styles.ColorPaneBorderActive).Border(lipgloss.NormalBorder()).Padding(0, 1)

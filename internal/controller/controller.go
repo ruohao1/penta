@@ -2,16 +2,14 @@ package controller
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
-	"github.com/Ruohao1/penta/internal/core/engine"
-	"github.com/Ruohao1/penta/internal/core/events"
-	"github.com/Ruohao1/penta/internal/core/runner"
-	"github.com/Ruohao1/penta/internal/core/sinks"
-	"github.com/Ruohao1/penta/internal/core/stages"
-	"github.com/Ruohao1/penta/internal/core/stages/host_discovery"
-	"github.com/Ruohao1/penta/internal/core/tasks"
-	"github.com/Ruohao1/penta/internal/core/types"
+	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/features"
+	"github.com/ruohao1/penta/internal/features/contentdiscovery"
+	"github.com/ruohao1/penta/internal/flow"
+	"github.com/ruohao1/penta/internal/runtime"
+	"github.com/ruohao1/penta/internal/sinks"
 )
 
 type Session struct {
@@ -20,64 +18,70 @@ type Session struct {
 	Stop   func()
 }
 
+type StartInput struct {
+	Feature flow.Type
+	Task    flow.TaskOptions
+	Run     runtime.Config
+}
 type Controller struct {
-	Pool func(types.RunOptions) runner.Pool
+	runtime *runtime.Runtime
+	sink    sinks.Sink
 }
 
-func New(poolFn func(types.RunOptions) runner.Pool) *Controller {
-	return &Controller{Pool: poolFn}
+func New(rt *runtime.Runtime, sink sinks.Sink) *Controller {
+	return &Controller{
+		runtime: rt,
+		sink:    sink,
+	}
 }
 
-func (c *Controller) Start(ctx context.Context, task tasks.Task, opts types.RunOptions, base sinks.Sink) (*Session, error) {
+func (c *Controller) Start(ctx context.Context, in StartInput) (*Session, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	eventsCh := make(chan events.Event, 256)
 	done := make(chan error, 1)
-
-	if c.Pool == nil {
-		c.Pool = engine.DefaultPool
+	session := &Session{
+		Events: eventsCh,
+		Done:   done,
+		Stop:   cancel,
 	}
 
-	stageList, err := c.stagesForTask(task)
+	plan, err := featureBuild(ctx, in)
 	if err != nil {
 		cancel()
+		close(eventsCh)
+		close(done)
 		return nil, err
 	}
 
-	var sink sinks.Sink = base
-	if sink == nil {
-		sink = sinks.NewPentaSink(sinks.SinkOptions{})
+	runner := c.runtime
+	if runner == nil {
+		runner = runtime.New(in.Run, c.sink)
 	}
-	sink = sinks.NewMultiSink(sink, sinks.NewChannelSink(eventsCh))
 
-	eng := engine.Engine{
-		Stages: stageList,
-		Pool:   c.Pool,
-		Sink:   sink,
+	var runSink sinks.Sink = sinks.NewChannelSink(eventsCh)
+	if c.sink != nil {
+		runSink = sinks.NewMultiSink(c.sink, runSink)
 	}
 
 	go func() {
-		err := eng.Run(ctx, task, opts)
+		err := runner.Run(ctx, plan, runSink)
+		_ = runSink.Close()
 		done <- err
 		close(done)
 		close(eventsCh)
 	}()
 
-	return &Session{
-		Events: eventsCh,
-		Done:   done,
-		Stop:   cancel,
-	}, nil
+	return session, nil
 }
 
-func (c *Controller) stagesForTask(task tasks.Task) ([]stages.Stage, error) {
-	switch task.Type {
-	case tasks.HostDiscovery:
-		return []stages.Stage{host_discovery.New()}, nil
-	case tasks.PortScan:
-		return nil, fmt.Errorf("port scan stages not implemented")
-	case tasks.WebProbe:
-		return nil, fmt.Errorf("web probe stages not implemented")
+func featureBuild(ctx context.Context, in StartInput) (flow.Plan, error) {
+	var feature features.Feature
+	switch in.Feature {
+	case flow.ContentDiscovery:
+		feature = contentdiscovery.New()
 	default:
-		return nil, fmt.Errorf("unknown task type %q", task.Type)
+		return flow.Plan{}, errors.New("unsupported feature")
 	}
+
+	return feature.Build(ctx, flow.BuildInput{Task: in.Task})
 }

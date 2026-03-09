@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/Ruohao1/penta/internal/tui"
+	"github.com/ruohao1/penta/internal/tui"
 	"github.com/spf13/cobra"
 )
 

@@ -4,8 +4,8 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/Ruohao1/penta/internal/tui/messages"
-	"github.com/Ruohao1/penta/internal/tui/styles"
+	"github.com/ruohao1/penta/internal/tui/messages"
+	"github.com/ruohao1/penta/internal/tui/styles"
 )
 
 type tablePane struct {
@@ -22,6 +22,11 @@ type tablePane struct {
 type Column struct {
 	Title        string
 	WidthPercent int
+}
+
+type TableRows interface {
+	AddStringRow(row []string)
+	SetStringRows(rows [][]string)
 }
 
 func TablePane(columns []Column) *tablePane {
@@ -138,6 +143,18 @@ func (m *tablePane) AddRow(row table.Row) {
 	rows := m.table.Rows()
 	rows = append(rows, row)
 	m.table.SetRows(rows)
+}
+
+func (m *tablePane) AddStringRow(row []string) {
+	m.AddRow(table.Row(row))
+}
+
+func (m *tablePane) SetStringRows(rows [][]string) {
+	out := make([]table.Row, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, table.Row(r))
+	}
+	m.SetRows(out)
 }
 
 func (m *tablePane) Help() string {

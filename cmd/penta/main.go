@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/Ruohao1/penta/internal/cli"
+	"github.com/ruohao1/penta/internal/cli"
 )
 
 func main() {

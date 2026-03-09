@@ -2,48 +2,108 @@ package config
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
-	"github.com/Ruohao1/penta/internal/core/sinks"
-	"github.com/rs/zerolog"
+	"github.com/ruohao1/penta/internal/runtime"
+	"github.com/spf13/viper"
 )
 
-type Config struct{}
-
-func LoadConfig() *Config {
-	return &Config{}
+type Config struct {
+	Run RunConfig `mapstructure:"run"`
 }
 
-type (
-	ctxLoggerKey struct{}
-	ctxConfigKey struct{}
-	ctxSinkKey   struct{}
-)
-
-func WithLogger(ctx context.Context, l zerolog.Logger) context.Context {
-	return context.WithValue(ctx, ctxLoggerKey{}, l)
+type RunConfig struct {
+	FailFast     *bool          `mapstructure:"fail_fast"`
+	BufferSize   *int           `mapstructure:"buffer_size"`
+	Workers      *int           `mapstructure:"workers"`
+	MaxRate      *float64       `mapstructure:"max_rate"`
+	RateBurst    *int           `mapstructure:"rate_burst"`
+	MaxRetries   *int           `mapstructure:"max_retries"`
+	RetryBackoff *time.Duration `mapstructure:"retry_backoff"`
+	Timeout      *time.Duration `mapstructure:"timeout"`
 }
 
-func LoggerFrom(ctx context.Context) zerolog.Logger {
-	l, ok := ctx.Value(ctxLoggerKey{}).(zerolog.Logger)
-	if !ok {
-		return zerolog.Nop()
+func DefaultPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
 	}
-	return l
+	return filepath.Join(home, ".config", "penta", "config.yaml"), nil
 }
 
-func WithConfig(ctx context.Context, cfg *Config) context.Context {
-	return context.WithValue(ctx, ctxConfigKey{}, cfg)
+func Load(path string) (Config, error) {
+	v := viper.New()
+	v.SetConfigType("yaml")
+	v.SetEnvPrefix("PENTA")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+
+	if path == "" {
+		defaultPath, err := DefaultPath()
+		if err != nil {
+			return Config{}, err
+		}
+		path = defaultPath
+	}
+
+	v.SetConfigFile(path)
+	err := v.ReadInConfig()
+	if err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) && !errors.Is(err, os.ErrNotExist) {
+			return Config{}, err
+		}
+	}
+
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
 }
 
-func ConfigFrom(ctx context.Context) *Config {
-	cfg, _ := ctx.Value(ctxConfigKey{}).(*Config)
-	return cfg
+func (c Config) ToRuntimeConfig() runtime.Config {
+	out := runtime.DefaultConfig()
+
+	if c.Run.FailFast != nil {
+		out.FailFast = *c.Run.FailFast
+	}
+	if c.Run.BufferSize != nil {
+		out.BufferSize = *c.Run.BufferSize
+	}
+	if c.Run.Workers != nil {
+		out.Workers = *c.Run.Workers
+	}
+	if c.Run.MaxRate != nil {
+		out.MaxRate = *c.Run.MaxRate
+	}
+	if c.Run.RateBurst != nil {
+		out.RateBurst = *c.Run.RateBurst
+	}
+	if c.Run.MaxRetries != nil {
+		out.MaxRetries = *c.Run.MaxRetries
+	}
+	if c.Run.RetryBackoff != nil {
+		out.RetryBackoff = *c.Run.RetryBackoff
+	}
+	if c.Run.Timeout != nil {
+		out.Timeout = *c.Run.Timeout
+	}
+
+	return out
 }
 
-func WithSink(ctx context.Context, s sinks.Sink) context.Context {
-	return context.WithValue(ctx, ctxSinkKey{}, s)
+type runtimeConfigKey struct{}
+
+func WithRuntimeConfig(ctx context.Context, cfg runtime.Config) context.Context {
+	return context.WithValue(ctx, runtimeConfigKey{}, cfg)
 }
-func SinkFrom(ctx context.Context) sinks.Sink {
-	s, _ := ctx.Value(ctxSinkKey{}).(sinks.Sink)
-	return s
+
+func RuntimeConfigFrom(ctx context.Context) (runtime.Config, bool) {
+	cfg, ok := ctx.Value(runtimeConfigKey{}).(runtime.Config)
+	return cfg, ok
 }

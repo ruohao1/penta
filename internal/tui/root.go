@@ -5,9 +5,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/Ruohao1/penta/internal/core/events"
-	"github.com/Ruohao1/penta/internal/tui/components"
-	viewpkg "github.com/Ruohao1/penta/internal/tui/views"
+	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/tui/components"
+	viewpkg "github.com/ruohao1/penta/internal/tui/views"
 )
 
 type root struct {
