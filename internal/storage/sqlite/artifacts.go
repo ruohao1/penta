@@ -1,0 +1,47 @@
+package sqlite
+
+import (
+	"context"
+	"time"
+)
+
+type Artifact struct {
+	ID        string    `db:"id"`
+	TaskID    string    `db:"task_id"`
+	Path      string    `db:"path"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
+func (db *DB) CreateArtifact(ctx context.Context, artifact Artifact) error {
+	if err := validateArtifact(artifact); err != nil {
+		return err
+	}
+
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO artifacts (id, task_id, path, created_at)
+		VALUES (?, ?, ?, ?)
+	`, artifact.ID, artifact.TaskID, artifact.Path, artifact.CreatedAt)
+	return err
+}
+
+func (db *DB) ListArtifactsByTask(ctx context.Context, taskID string) ([]Artifact, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, task_id, path, created_at
+		FROM artifacts
+		WHERE task_id = ?
+	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var artifacts []Artifact
+	for rows.Next() {
+		var artifact Artifact
+		if err := rows.Scan(&artifact.ID, &artifact.TaskID, &artifact.Path, &artifact.CreatedAt); err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, artifact)
+	}
+	return artifacts, rows.Err()
+}

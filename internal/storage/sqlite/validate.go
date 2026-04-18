@@ -1,0 +1,73 @@
+package sqlite
+
+import (
+	"encoding/json"
+	"errors"
+	"strings"
+)
+
+func requireNonEmpty(field string, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return errors.New(field + " is required")
+	}
+	return nil
+}
+
+func requireValidJSON(field string, value string) error {
+	if err := requireNonEmpty(field, value); err != nil {
+		return err
+	}
+	if !json.Valid([]byte(value)) {
+		return errors.New(field + " must be valid JSON")
+	}
+	return nil
+}
+
+func validateRun(run Run) error {
+	if err := requireNonEmpty("run.id", run.ID); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("run.mode", run.Mode); err != nil {
+		return err
+	}
+	return requireNonEmpty("run.status", run.Status)
+}
+
+func validateTask(task Task) error {
+	if err := requireNonEmpty("task.id", task.ID); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("task.run_id", task.RunID); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("task.action_type", task.ActionType); err != nil {
+		return err
+	}
+	if err := requireValidJSON("task.input_json", task.InputJSON); err != nil {
+		return err
+	}
+	return requireNonEmpty("task.status", task.Status)
+}
+
+func validateArtifact(artifact Artifact) error {
+	if err := requireNonEmpty("artifact.id", artifact.ID); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("artifact.task_id", artifact.TaskID); err != nil {
+		return err
+	}
+	return requireNonEmpty("artifact.path", artifact.Path)
+}
+
+func validateEvidence(evidence Evidence) error {
+	if err := requireNonEmpty("evidence.id", evidence.ID); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("evidence.run_id", evidence.RunID); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("evidence.kind", evidence.Kind); err != nil {
+		return err
+	}
+	return requireValidJSON("evidence.data_json", evidence.DataJSON)
+}
