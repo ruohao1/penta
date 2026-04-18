@@ -10,20 +10,20 @@ func NewPentaCommand() *cobra.Command {
 	app := &App{}
 
 	cmd := &cobra.Command{
-		Use:   "penta",
+		Use: "penta",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			config, err := config.Load()
 			if err != nil {
 				return err
 			}
 			app.Config = config
-			app.DB, err = sqlite.Open(cmd.Context(), config.DBPath)
+			app.DB, err = sqlite.Open(cmd.Context(), config.Storage.DBPath)
 			if err != nil {
 				return err
 			}
 			return nil
 		},
-		RunE: func(cmd *cobra.Command, args []string) error{
+		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
@@ -43,5 +43,3 @@ func Execute() error {
 	cmd := NewPentaCommand()
 	return cmd.Execute()
 }
-
-

@@ -3,11 +3,16 @@ package config
 import (
 	"errors"
 	"log"
+	"strings"
 
 	"github.com/spf13/viper"
 )
 
 type Config struct {
+	Storage StorageConfig `mapstructure:"storage"`
+}
+
+type StorageConfig struct {
 	DBPath string `mapstructure:"db_path"`
 }
 
@@ -20,8 +25,11 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	v.SetDefault("db_path", paths.DBPath)
-	_ = v.BindEnv("db_path") // map to env var PENTA_DB_PATH correctly
+	v.SetDefault("storage.db_path", paths.DBPath)
+	v.SetEnvPrefix("PENTA")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+	_ = v.BindEnv("storage.db_path")
 
 	// --- Config file (optional)
 	v.SetConfigName("penta")
@@ -29,10 +37,6 @@ func Load() (*Config, error) {
 	v.AddConfigPath(".")
 	v.AddConfigPath(".penta")
 	v.AddConfigPath(paths.ConfigDir)
-
-	// --- ENV (override everything)
-	v.SetEnvPrefix("PENTA")
-	v.AutomaticEnv()
 
 	// --- Read config file
 	if err := v.ReadInConfig(); err == nil {
