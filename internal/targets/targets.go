@@ -16,6 +16,11 @@ const (
 	TypeURL     Type = "url"
 )
 
+type TargetRef struct {
+	Value string `json:"value"`
+	Type  Type   `json:"type"`
+}
+
 type Target interface {
 	Type() Type
 	String() string

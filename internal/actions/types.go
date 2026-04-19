@@ -4,6 +4,7 @@ type ActionType string
 
 const (
 	ActionSeedTarget ActionType = "seed_target"
+	ActionProbeHTTP	 ActionType = "probe_http"
 )
 
 type TaskStatus string

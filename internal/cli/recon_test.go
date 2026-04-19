@@ -10,6 +10,7 @@ import (
 
 	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
+	"github.com/ruohao1/penta/internal/targets"
 	"github.com/spf13/cobra"
 )
 
@@ -93,8 +94,8 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	if err := json.Unmarshal([]byte(inputJSON), &inputPayload); err != nil {
 		t.Fatalf("unmarshal task input json: %v", err)
 	}
-	if inputPayload["target"] != target {
-		t.Fatalf("unexpected task target: got %q want %q", inputPayload["target"], target)
+	if inputPayload["raw"] != target {
+		t.Fatalf("unexpected task raw input: got %q want %q", inputPayload["raw"], target)
 	}
 
 	var evidenceKind string
@@ -143,7 +144,7 @@ func TestExecuteTaskCreatesArtifactsAndEvidenceForSeedTarget(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	inputJSON, err := json.Marshal(map[string]string{"target": "example.com"})
+	inputJSON, err := json.Marshal(map[string]string{"raw": "example.com"})
 	if err != nil {
 		t.Fatalf("marshal input json: %v", err)
 	}
@@ -215,7 +216,7 @@ func TestExecuteTaskClassifiesIPTarget(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	inputJSON, err := json.Marshal(map[string]string{"target": "1.2.3.4"})
+	inputJSON, err := json.Marshal(map[string]string{"raw": "1.2.3.4"})
 	if err != nil {
 		t.Fatalf("marshal input json: %v", err)
 	}
@@ -269,7 +270,7 @@ func TestExecuteTaskClassifiesURLTarget(t *testing.T) {
 	}
 
 	target := "https://example.com/foo?a=b"
-	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	inputJSON, err := json.Marshal(map[string]string{"raw": target})
 	if err != nil {
 		t.Fatalf("marshal input json: %v", err)
 	}
@@ -318,7 +319,7 @@ func TestExecuteTaskClassifiesCIDRTarget(t *testing.T) {
 	}
 
 	target := "10.0.0.0/24"
-	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	inputJSON, err := json.Marshal(map[string]string{"raw": target})
 	if err != nil {
 		t.Fatalf("marshal input json: %v", err)
 	}
@@ -356,7 +357,7 @@ func TestExecuteTaskClassifiesServiceTarget(t *testing.T) {
 	}
 
 	target := "example.com:443"
-	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	inputJSON, err := json.Marshal(map[string]string{"raw": target})
 	if err != nil {
 		t.Fatalf("marshal input json: %v", err)
 	}
@@ -394,7 +395,7 @@ func TestExecuteTaskClassifiesIPRangeTarget(t *testing.T) {
 	}
 
 	target := "1-255.1-255.1-255.1-255"
-	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	inputJSON, err := json.Marshal(map[string]string{"raw": target})
 	if err != nil {
 		t.Fatalf("marshal input json: %v", err)
 	}
@@ -436,7 +437,7 @@ func TestExecuteTaskMarksUnknownActionFailed(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	inputJSON, err := json.Marshal(map[string]string{"target": "example.com"})
+	inputJSON, err := json.Marshal(map[string]string{"raw": "example.com"})
 	if err != nil {
 		t.Fatalf("marshal input json: %v", err)
 	}
@@ -464,6 +465,149 @@ func TestExecuteTaskMarksUnknownActionFailed(t *testing.T) {
 	}
 	if storedTask.Status != actions.TaskStatusFailed {
 		t.Fatalf("unexpected task status after failed executeTask: got %q want %q", storedTask.Status, actions.TaskStatusFailed)
+	}
+}
+
+func TestExecuteTaskHandlesProbeHTTPDomain(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{ID: "run_probe_domain", Mode: "recon", Status: actions.RunStatusRunning, CreatedAt: time.Now()}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	inputJSON, err := json.Marshal(actions.ProbeHTTPInput{Value: "example.com", Type: targets.TypeDomain})
+	if err != nil {
+		t.Fatalf("marshal probe input: %v", err)
+	}
+
+	task := sqlite.Task{ID: "task_probe_domain", RunID: run.ID, ActionType: actions.ActionProbeHTTP, InputJSON: string(inputJSON), Status: actions.TaskStatusPending, CreatedAt: time.Now()}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := executeTask(cmd, app, task.ID); err != nil {
+		t.Fatalf("execute task: %v", err)
+	}
+
+	assertServiceEvidence(t, app, "example.com", "https", 443)
+}
+
+func TestExecuteTaskHandlesProbeHTTPIP(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{ID: "run_probe_ip", Mode: "recon", Status: actions.RunStatusRunning, CreatedAt: time.Now()}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	inputJSON, err := json.Marshal(actions.ProbeHTTPInput{Value: "1.2.3.4", Type: targets.TypeIP})
+	if err != nil {
+		t.Fatalf("marshal probe input: %v", err)
+	}
+
+	task := sqlite.Task{ID: "task_probe_ip", RunID: run.ID, ActionType: actions.ActionProbeHTTP, InputJSON: string(inputJSON), Status: actions.TaskStatusPending, CreatedAt: time.Now()}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := executeTask(cmd, app, task.ID); err != nil {
+		t.Fatalf("execute task: %v", err)
+	}
+
+	assertServiceEvidence(t, app, "1.2.3.4", "https", 443)
+}
+
+func TestExecuteTaskHandlesProbeHTTPURL(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{ID: "run_probe_url", Mode: "recon", Status: actions.RunStatusRunning, CreatedAt: time.Now()}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	inputJSON, err := json.Marshal(actions.ProbeHTTPInput{Value: "https://example.com:8443/foo?a=b", Type: targets.TypeURL})
+	if err != nil {
+		t.Fatalf("marshal probe input: %v", err)
+	}
+
+	task := sqlite.Task{ID: "task_probe_url", RunID: run.ID, ActionType: actions.ActionProbeHTTP, InputJSON: string(inputJSON), Status: actions.TaskStatusPending, CreatedAt: time.Now()}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := executeTask(cmd, app, task.ID); err != nil {
+		t.Fatalf("execute task: %v", err)
+	}
+
+	assertServiceEvidence(t, app, "example.com", "https", 8443)
+}
+
+func TestExecuteTaskRejectsProbeHTTPCIDR(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{ID: "run_probe_cidr", Mode: "recon", Status: actions.RunStatusRunning, CreatedAt: time.Now()}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	inputJSON, err := json.Marshal(actions.ProbeHTTPInput{Value: "10.0.0.0/24", Type: targets.TypeCIDR})
+	if err != nil {
+		t.Fatalf("marshal probe input: %v", err)
+	}
+
+	task := sqlite.Task{
+		ID:         "task_probe_cidr",
+		RunID:      run.ID,
+		ActionType: actions.ActionProbeHTTP,
+		InputJSON:  string(inputJSON),
+		Status:     actions.TaskStatusPending,
+		CreatedAt:  time.Now(),
+	}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	err = executeTask(cmd, app, task.ID)
+	if err == nil {
+		t.Fatal("expected probe_http cidr execution to fail")
+	}
+
+	storedTask, err := app.DB.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if storedTask.Status != actions.TaskStatusFailed {
+		t.Fatalf("unexpected task status after failed executeTask: got %q want %q", storedTask.Status, actions.TaskStatusFailed)
+	}
+}
+
+func assertServiceEvidence(t *testing.T, app *App, host, scheme string, port int) {
+	t.Helper()
+
+	var evidenceKind string
+	var evidenceJSON string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT kind, data_json FROM evidence LIMIT 1").Scan(&evidenceKind, &evidenceJSON); err != nil {
+		t.Fatalf("query service evidence: %v", err)
+	}
+	if evidenceKind != "service" {
+		t.Fatalf("unexpected evidence kind: got %q want %q", evidenceKind, "service")
+	}
+
+	var payload actions.ServiceEvidence
+	if err := json.Unmarshal([]byte(evidenceJSON), &payload); err != nil {
+		t.Fatalf("unmarshal service evidence: %v", err)
+	}
+	if payload.Host != host || payload.Scheme != scheme || payload.Port != port {
+		t.Fatalf("unexpected service evidence: %+v", payload)
 	}
 }
 

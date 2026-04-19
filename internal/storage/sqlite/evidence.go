@@ -47,3 +47,27 @@ func (db *DB) ListEvidenceByRun(ctx context.Context, runID string) ([]Evidence, 
 	}
 	return evidence, rows.Err()
 }
+
+func (db *DB) ListEvidenceByRunAndKind(ctx context.Context, runID, kind string) ([]Evidence, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, run_id, kind, data_json, created_at
+		FROM evidence
+		WHERE run_id = ? AND kind = ?
+		ORDER BY created_at ASC
+	`, runID, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	
+	var evidence []Evidence
+	for rows.Next() {
+		var e Evidence
+		if err := rows.Scan(&e.ID, &e.RunID, &e.Kind, &e.DataJSON, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		evidence = append(evidence, e)
+	}
+	return evidence, rows.Err()
+}
+

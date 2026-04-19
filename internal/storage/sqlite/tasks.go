@@ -72,3 +72,19 @@ func (db *DB) UpdateTaskStatus(ctx context.Context, taskID string, status action
 	`, string(status), taskID)
 	return err
 }
+
+func (db *DB) NextPendingTask(ctx context.Context) (*Task, error) {
+	row := db.QueryRowContext(ctx, `
+		SELECT id, run_id, action_type, input_json, status, created_at
+		FROM tasks
+		WHERE status = 'pending'
+		ORDER BY created_at ASC
+		LIMIT 1
+	`)
+	
+	var task Task
+	if err := row.Scan(&task.ID, &task.RunID, &task.ActionType, &task.InputJSON, &task.Status, &task.CreatedAt); err != nil {
+		return nil, err;
+	}
+	return &task, nil
+}

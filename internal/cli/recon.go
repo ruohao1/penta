@@ -69,7 +69,7 @@ func seedRecon(cmd *cobra.Command, app *App, target string) (string, string, err
 		return "", "", err
 	}
 
-	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	inputJSON, err := json.Marshal(actions.SeedTargetInput{Raw: target})
 	if err != nil {
 		return "", "", err
 	}

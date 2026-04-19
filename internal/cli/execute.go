@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
@@ -25,6 +26,8 @@ func executeTask(cmd *cobra.Command, app *App, taskID string) error {
 	switch task.ActionType {
 	case actions.ActionSeedTarget:
 		execErr = executeSeedTarget(cmd, app, task)
+	case actions.ActionProbeHTTP:
+		execErr = executeProbeHTTP(cmd, app, task)
 	default:
 		execErr = fmt.Errorf("unsupported action type: %s", task.ActionType)
 	}
@@ -39,20 +42,89 @@ func executeTask(cmd *cobra.Command, app *App, taskID string) error {
 	return nil
 }
 
-func executeSeedTarget(cmd *cobra.Command, app *App, task *sqlite.Task) error {
-	input := make(map[string]string)
+func executeProbeHTTP(cmd *cobra.Command, app *App, task *sqlite.Task) error {
+	var input actions.ProbeHTTPInput
 	if err := json.Unmarshal([]byte(task.InputJSON), &input); err != nil {
 		return err
 	}
+	service := actions.ServiceEvidence{}
+	switch input.Type {
+	case targets.TypeURL:
+		parsed, err := targets.Parse(input.Value)
+		if err != nil {
+			return err
+		}
+		urlTarget, ok := parsed.(*targets.URL)
+		if !ok {
+			return fmt.Errorf("expected url target")
+		}
+		service.Host = urlTarget.Host
+		service.Scheme = urlTarget.Scheme
+		service.Port, err = defaultPort(urlTarget.Scheme, urlTarget.Port)
+		if err != nil {
+			return err
+		}
+	case targets.TypeDomain, targets.TypeIP:
+		service.Host = input.Value
+		service.Scheme = "https"
+		service.Port = 443
+	default:
+		return fmt.Errorf("unsupported target type: %s", input.Type)
+	}
 
-	target, err := targets.Parse(input["target"])
+	evidenceJSON, err := json.Marshal(service)
 	if err != nil {
 		return err
 	}
 
-	evidenceData := map[string]string{
-		"value": target.String(),
-		"type":  string(target.Type()),
+	evidenceID := "evidence_" + generateID()
+	evidence := sqlite.Evidence{
+		ID:        evidenceID,
+		RunID:     task.RunID,
+		Kind:      "service",
+		DataJSON:  string(evidenceJSON),
+		CreatedAt: time.Now(),
+	}
+	if err := app.DB.CreateEvidence(cmd.Context(), evidence); err != nil {
+		return err
+	}
+	return nil
+}
+
+func defaultPort(scheme, port string) (int, error) {
+	if port != "" {
+		parsed, err := strconv.Atoi(port)
+		if err != nil {
+			return 0, fmt.Errorf("invalid port %q", port)
+		}
+		if parsed < 1 || parsed > 65535 {
+			return 0, fmt.Errorf("port out of range: %d", parsed)
+		}
+		return parsed, nil
+	}
+	switch scheme {
+	case "http":
+		return 80, nil
+	case "https":
+		return 443, nil
+	default:
+		return 0, fmt.Errorf("unsupported scheme %q", scheme)
+	}
+}
+func executeSeedTarget(cmd *cobra.Command, app *App, task *sqlite.Task) error {
+	var input actions.SeedTargetInput
+	if err := json.Unmarshal([]byte(task.InputJSON), &input); err != nil {
+		return err
+	}
+
+	target, err := targets.Parse(input.Raw)
+	if err != nil {
+		return err
+	}
+
+	evidenceData := actions.SeedTargetEvidence{
+		Value: target.String(),
+		Type:  target.Type(),
 	}
 
 	evidenceJSON, err := json.Marshal(evidenceData)
