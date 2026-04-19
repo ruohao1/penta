@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ruohao1/penta/internal/actions"
 )
 
 func openTestDB(t *testing.T) *DB {
@@ -30,7 +32,7 @@ func TestOpenInitializesSchema(t *testing.T) {
 	run := Run{
 		ID:        "run_1",
 		Mode:      "bugbounty",
-		Status:    "running",
+		Status:    actions.RunStatusRunning,
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
 	}
 
@@ -60,7 +62,7 @@ func TestTaskArtifactAndEvidenceCRUD(t *testing.T) {
 	run := Run{
 		ID:        "run_1",
 		Mode:      "ctf",
-		Status:    "running",
+		Status:    actions.RunStatusRunning,
 		CreatedAt: now,
 	}
 	if err := db.CreateRun(ctx, run); err != nil {
@@ -70,9 +72,9 @@ func TestTaskArtifactAndEvidenceCRUD(t *testing.T) {
 	task := Task{
 		ID:         "task_1",
 		RunID:      run.ID,
-		ActionType: "probe_http",
+		ActionType: actions.ActionType("probe_http"),
 		InputJSON:  `{"host":"example.com"}`,
-		Status:     "pending",
+		Status:     actions.TaskStatusPending,
 		CreatedAt:  now,
 	}
 	if err := db.CreateTask(ctx, task); err != nil {
@@ -90,7 +92,18 @@ func TestTaskArtifactAndEvidenceCRUD(t *testing.T) {
 		t.Fatalf("unexpected task: %+v", tasks[0])
 	}
 
-	if err := db.UpdateTaskStatus(ctx, task.ID, "done"); err != nil {
+	gotTask, err := db.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if gotTask.ID != task.ID || gotTask.RunID != task.RunID || gotTask.ActionType != task.ActionType || gotTask.Status != task.Status || gotTask.InputJSON != task.InputJSON {
+		t.Fatalf("unexpected get task result: %+v", gotTask)
+	}
+	if !gotTask.CreatedAt.Equal(task.CreatedAt) {
+		t.Fatalf("unexpected task created_at: got %v want %v", gotTask.CreatedAt, task.CreatedAt)
+	}
+
+	if err := db.UpdateTaskStatus(ctx, task.ID, actions.TaskStatusCompleted); err != nil {
 		t.Fatalf("update task status: %v", err)
 	}
 
@@ -98,8 +111,8 @@ func TestTaskArtifactAndEvidenceCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list tasks after update: %v", err)
 	}
-	if tasks[0].Status != "done" {
-		t.Fatalf("unexpected updated status: got %q want %q", tasks[0].Status, "done")
+	if tasks[0].Status != actions.TaskStatusCompleted {
+		t.Fatalf("unexpected updated status: got %q want %q", tasks[0].Status, actions.TaskStatusCompleted)
 	}
 
 	artifact := Artifact{
@@ -157,7 +170,7 @@ func TestCreateTaskRejectsInvalidJSON(t *testing.T) {
 	run := Run{
 		ID:        "run_1",
 		Mode:      "ctf",
-		Status:    "running",
+		Status:    actions.RunStatusRunning,
 		CreatedAt: now,
 	}
 	if err := db.CreateRun(ctx, run); err != nil {
@@ -167,9 +180,9 @@ func TestCreateTaskRejectsInvalidJSON(t *testing.T) {
 	err := db.CreateTask(ctx, Task{
 		ID:         "task_bad",
 		RunID:      run.ID,
-		ActionType: "probe_http",
+		ActionType: actions.ActionType("probe_http"),
 		InputJSON:  `{"target":`,
-		Status:     "pending",
+		Status:     actions.TaskStatusPending,
 		CreatedAt:  now,
 	})
 	if err == nil {

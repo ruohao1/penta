@@ -3,13 +3,15 @@ package sqlite
 import (
 	"context"
 	"time"
+
+	"github.com/ruohao1/penta/internal/actions"
 )
 
 type Run struct {
-	ID        string    `db:"id"`
-	Mode      string    `db:"mode"`
-	Status    string    `db:"status"`
-	CreatedAt time.Time `db:"created_at"`
+	ID        string            `db:"id"`
+	Mode      string            `db:"mode"`
+	Status    actions.RunStatus `db:"status"`
+	CreatedAt time.Time         `db:"created_at"`
 }
 
 func (db *DB) CreateRun(ctx context.Context, run Run) error {
@@ -20,7 +22,7 @@ func (db *DB) CreateRun(ctx context.Context, run Run) error {
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO runs (id, mode, status, created_at)
 		VALUES (?, ?, ?, ?)
-	`, run.ID, run.Mode, run.Status, run.CreatedAt)
+	`, run.ID, run.Mode, string(run.Status), run.CreatedAt)
 	return err
 }
 
@@ -38,11 +40,11 @@ func (db *DB) GetRun(ctx context.Context, id string) (*Run, error) {
 	return &run, nil
 }
 
-func (db *DB) UpdateRunStatus(ctx context.Context, id string, status string) error {
+func (db *DB) UpdateRunStatus(ctx context.Context, id string, status actions.RunStatus) error {
 	_, err := db.ExecContext(ctx, `
 		UPDATE runs
 		SET status = ?
 		WHERE id = ?
-	`, status, id)
+	`, string(status), id)
 	return err
 }

@@ -2,10 +2,15 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
+	"github.com/spf13/cobra"
 )
 
 func openTestApp(t *testing.T) *App {
@@ -39,6 +44,7 @@ func queryCount(t *testing.T, app *App, table string) int {
 func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	app := openTestApp(t)
 	cmd := newReconCommand(app)
+	target := "example.com"
 	cmd.SetArgs([]string{"example.com"})
 
 	if err := cmd.Execute(); err != nil {
@@ -51,8 +57,8 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	if got := queryCount(t, app, "tasks"); got != 1 {
 		t.Fatalf("unexpected tasks count: got %d want 1", got)
 	}
-	if got := queryCount(t, app, "artifacts"); got != 1 {
-		t.Fatalf("unexpected artifacts count: got %d want 1", got)
+	if got := queryCount(t, app, "artifacts"); got != 0 {
+		t.Fatalf("unexpected artifacts count: got %d want 0", got)
 	}
 	if got := queryCount(t, app, "evidence"); got != 1 {
 		t.Fatalf("unexpected evidence count: got %d want 1", got)
@@ -62,18 +68,55 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	if err := app.DB.QueryRowContext(context.Background(), "SELECT status FROM runs LIMIT 1").Scan(&runStatus); err != nil {
 		t.Fatalf("query run status: %v", err)
 	}
-	if runStatus != "completed" {
-		t.Fatalf("unexpected run status: got %q want %q", runStatus, "completed")
+	if runStatus != string(actions.RunStatusCompleted) {
+		t.Fatalf("unexpected run status: got %q want %q", runStatus, actions.RunStatusCompleted)
 	}
 
 	var taskStatus string
 	if err := app.DB.QueryRowContext(context.Background(), "SELECT status FROM tasks LIMIT 1").Scan(&taskStatus); err != nil {
 		t.Fatalf("query task status: %v", err)
 	}
-	if taskStatus != "completed" {
-		t.Fatalf("unexpected task status: got %q want %q", taskStatus, "completed")
+	if taskStatus != string(actions.TaskStatusCompleted) {
+		t.Fatalf("unexpected task status: got %q want %q", taskStatus, actions.TaskStatusCompleted)
 	}
+
+	var actionType string
+	var inputJSON string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT action_type, input_json FROM tasks LIMIT 1").Scan(&actionType, &inputJSON); err != nil {
+		t.Fatalf("query task payload: %v", err)
 	}
+	if actionType != string(actions.ActionSeedTarget) {
+		t.Fatalf("unexpected action type: got %q want %q", actionType, actions.ActionSeedTarget)
+	}
+
+	var inputPayload map[string]string
+	if err := json.Unmarshal([]byte(inputJSON), &inputPayload); err != nil {
+		t.Fatalf("unmarshal task input json: %v", err)
+	}
+	if inputPayload["target"] != target {
+		t.Fatalf("unexpected task target: got %q want %q", inputPayload["target"], target)
+	}
+
+	var evidenceKind string
+	var evidenceJSON string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT kind, data_json FROM evidence LIMIT 1").Scan(&evidenceKind, &evidenceJSON); err != nil {
+		t.Fatalf("query evidence payload: %v", err)
+	}
+	if evidenceKind != "target" {
+		t.Fatalf("unexpected evidence kind: got %q want %q", evidenceKind, "target")
+	}
+
+	var evidencePayload map[string]string
+	if err := json.Unmarshal([]byte(evidenceJSON), &evidencePayload); err != nil {
+		t.Fatalf("unmarshal evidence json: %v", err)
+	}
+	if evidencePayload["value"] != target {
+		t.Fatalf("unexpected evidence value: got %q want %q", evidencePayload["value"], target)
+	}
+	if evidencePayload["type"] != "domain" {
+		t.Fatalf("unexpected evidence type: got %q want %q", evidencePayload["type"], "domain")
+	}
+}
 
 func TestReconCommandRequiresTarget(t *testing.T) {
 	app := openTestApp(t)
@@ -82,5 +125,379 @@ func TestReconCommandRequiresTarget(t *testing.T) {
 
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected missing target to fail")
+	}
+}
+
+func TestExecuteTaskCreatesArtifactsAndEvidenceForSeedTarget(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{
+		ID:        "run_exec",
+		Mode:      "recon",
+		Status:    actions.RunStatusRunning,
+		CreatedAt: time.Now(),
+	}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	inputJSON, err := json.Marshal(map[string]string{"target": "example.com"})
+	if err != nil {
+		t.Fatalf("marshal input json: %v", err)
+	}
+
+	task := sqlite.Task{
+		ID:         "task_exec",
+		RunID:      run.ID,
+		ActionType: actions.ActionSeedTarget,
+		InputJSON:  string(inputJSON),
+		Status:     actions.TaskStatusPending,
+		CreatedAt:  time.Now(),
+	}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := executeTask(cmd, app, task.ID); err != nil {
+		t.Fatalf("execute task: %v", err)
+	}
+
+	storedTask, err := app.DB.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if storedTask.Status != actions.TaskStatusRunning {
+		t.Fatalf("unexpected task status after executeTask: got %q want %q", storedTask.Status, actions.TaskStatusRunning)
+	}
+
+	if got := queryCount(t, app, "artifacts"); got != 0 {
+		t.Fatalf("unexpected artifacts count: got %d want 0", got)
+	}
+	if got := queryCount(t, app, "evidence"); got != 1 {
+		t.Fatalf("unexpected evidence count: got %d want 1", got)
+	}
+
+	var evidenceKind string
+	var evidenceJSON string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT kind, data_json FROM evidence LIMIT 1").Scan(&evidenceKind, &evidenceJSON); err != nil {
+		t.Fatalf("query evidence payload: %v", err)
+	}
+	if evidenceKind != "target" {
+		t.Fatalf("unexpected evidence kind: got %q want %q", evidenceKind, "target")
+	}
+
+	var evidencePayload map[string]string
+	if err := json.Unmarshal([]byte(evidenceJSON), &evidencePayload); err != nil {
+		t.Fatalf("unmarshal evidence json: %v", err)
+	}
+	if evidencePayload["value"] != "example.com" {
+		t.Fatalf("unexpected evidence value: got %q want %q", evidencePayload["value"], "example.com")
+	}
+	if evidencePayload["type"] != "domain" {
+		t.Fatalf("unexpected evidence type: got %q want %q", evidencePayload["type"], "domain")
+	}
+}
+
+func TestExecuteTaskClassifiesIPTarget(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{
+		ID:        "run_ip",
+		Mode:      "recon",
+		Status:    actions.RunStatusRunning,
+		CreatedAt: time.Now(),
+	}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	inputJSON, err := json.Marshal(map[string]string{"target": "1.2.3.4"})
+	if err != nil {
+		t.Fatalf("marshal input json: %v", err)
+	}
+
+	task := sqlite.Task{
+		ID:         "task_ip",
+		RunID:      run.ID,
+		ActionType: actions.ActionSeedTarget,
+		InputJSON:  string(inputJSON),
+		Status:     actions.TaskStatusPending,
+		CreatedAt:  time.Now(),
+	}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := executeTask(cmd, app, task.ID); err != nil {
+		t.Fatalf("execute task: %v", err)
+	}
+
+	var evidenceJSON string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT data_json FROM evidence LIMIT 1").Scan(&evidenceJSON); err != nil {
+		t.Fatalf("query evidence payload: %v", err)
+	}
+
+	var evidencePayload map[string]string
+	if err := json.Unmarshal([]byte(evidenceJSON), &evidencePayload); err != nil {
+		t.Fatalf("unmarshal evidence json: %v", err)
+	}
+	if evidencePayload["value"] != "1.2.3.4" {
+		t.Fatalf("unexpected evidence value: got %q want %q", evidencePayload["value"], "1.2.3.4")
+	}
+	if evidencePayload["type"] != "ip" {
+		t.Fatalf("unexpected evidence type: got %q want %q", evidencePayload["type"], "ip")
+	}
+}
+
+func TestExecuteTaskClassifiesURLTarget(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{
+		ID:        "run_url",
+		Mode:      "recon",
+		Status:    actions.RunStatusRunning,
+		CreatedAt: time.Now(),
+	}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	target := "https://example.com/foo?a=b"
+	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	if err != nil {
+		t.Fatalf("marshal input json: %v", err)
+	}
+
+	task := sqlite.Task{
+		ID:         "task_url",
+		RunID:      run.ID,
+		ActionType: actions.ActionSeedTarget,
+		InputJSON:  string(inputJSON),
+		Status:     actions.TaskStatusPending,
+		CreatedAt:  time.Now(),
+	}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := executeTask(cmd, app, task.ID); err != nil {
+		t.Fatalf("execute task: %v", err)
+	}
+
+	var evidenceJSON string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT data_json FROM evidence LIMIT 1").Scan(&evidenceJSON); err != nil {
+		t.Fatalf("query evidence payload: %v", err)
+	}
+
+	var evidencePayload map[string]string
+	if err := json.Unmarshal([]byte(evidenceJSON), &evidencePayload); err != nil {
+		t.Fatalf("unmarshal evidence json: %v", err)
+	}
+	if evidencePayload["value"] != target {
+		t.Fatalf("unexpected evidence value: got %q want %q", evidencePayload["value"], target)
+	}
+	if evidencePayload["type"] != "url" {
+		t.Fatalf("unexpected evidence type: got %q want %q", evidencePayload["type"], "url")
+	}
+}
+
+func TestExecuteTaskClassifiesCIDRTarget(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{ID: "run_cidr", Mode: "recon", Status: actions.RunStatusRunning, CreatedAt: time.Now()}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	target := "10.0.0.0/24"
+	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	if err != nil {
+		t.Fatalf("marshal input json: %v", err)
+	}
+
+	task := sqlite.Task{ID: "task_cidr", RunID: run.ID, ActionType: actions.ActionSeedTarget, InputJSON: string(inputJSON), Status: actions.TaskStatusPending, CreatedAt: time.Now()}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := executeTask(cmd, app, task.ID); err != nil {
+		t.Fatalf("execute task: %v", err)
+	}
+
+	var evidenceJSON string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT data_json FROM evidence LIMIT 1").Scan(&evidenceJSON); err != nil {
+		t.Fatalf("query evidence payload: %v", err)
+	}
+	var evidencePayload map[string]string
+	if err := json.Unmarshal([]byte(evidenceJSON), &evidencePayload); err != nil {
+		t.Fatalf("unmarshal evidence json: %v", err)
+	}
+	if evidencePayload["value"] != target || evidencePayload["type"] != "cidr" {
+		t.Fatalf("unexpected evidence payload: %+v", evidencePayload)
+	}
+}
+
+func TestExecuteTaskClassifiesServiceTarget(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{ID: "run_service", Mode: "recon", Status: actions.RunStatusRunning, CreatedAt: time.Now()}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	target := "example.com:443"
+	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	if err != nil {
+		t.Fatalf("marshal input json: %v", err)
+	}
+
+	task := sqlite.Task{ID: "task_service", RunID: run.ID, ActionType: actions.ActionSeedTarget, InputJSON: string(inputJSON), Status: actions.TaskStatusPending, CreatedAt: time.Now()}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := executeTask(cmd, app, task.ID); err != nil {
+		t.Fatalf("execute task: %v", err)
+	}
+
+	var evidenceJSON string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT data_json FROM evidence LIMIT 1").Scan(&evidenceJSON); err != nil {
+		t.Fatalf("query evidence payload: %v", err)
+	}
+	var evidencePayload map[string]string
+	if err := json.Unmarshal([]byte(evidenceJSON), &evidencePayload); err != nil {
+		t.Fatalf("unmarshal evidence json: %v", err)
+	}
+	if evidencePayload["value"] != target || evidencePayload["type"] != "service" {
+		t.Fatalf("unexpected evidence payload: %+v", evidencePayload)
+	}
+}
+
+func TestExecuteTaskClassifiesIPRangeTarget(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{ID: "run_iprange", Mode: "recon", Status: actions.RunStatusRunning, CreatedAt: time.Now()}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	target := "1-255.1-255.1-255.1-255"
+	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	if err != nil {
+		t.Fatalf("marshal input json: %v", err)
+	}
+
+	task := sqlite.Task{ID: "task_iprange", RunID: run.ID, ActionType: actions.ActionSeedTarget, InputJSON: string(inputJSON), Status: actions.TaskStatusPending, CreatedAt: time.Now()}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := executeTask(cmd, app, task.ID); err != nil {
+		t.Fatalf("execute task: %v", err)
+	}
+
+	var evidenceJSON string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT data_json FROM evidence LIMIT 1").Scan(&evidenceJSON); err != nil {
+		t.Fatalf("query evidence payload: %v", err)
+	}
+	var evidencePayload map[string]string
+	if err := json.Unmarshal([]byte(evidenceJSON), &evidencePayload); err != nil {
+		t.Fatalf("unmarshal evidence json: %v", err)
+	}
+	if evidencePayload["value"] != target || evidencePayload["type"] != "ip_range" {
+		t.Fatalf("unexpected evidence payload: %+v", evidencePayload)
+	}
+}
+
+func TestExecuteTaskMarksUnknownActionFailed(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	run := sqlite.Run{
+		ID:        "run_unknown",
+		Mode:      "recon",
+		Status:    actions.RunStatusRunning,
+		CreatedAt: time.Now(),
+	}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	inputJSON, err := json.Marshal(map[string]string{"target": "example.com"})
+	if err != nil {
+		t.Fatalf("marshal input json: %v", err)
+	}
+
+	task := sqlite.Task{
+		ID:         "task_unknown",
+		RunID:      run.ID,
+		ActionType: actions.ActionType("unknown_action"),
+		InputJSON:  string(inputJSON),
+		Status:     actions.TaskStatusPending,
+		CreatedAt:  time.Now(),
+	}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	err = executeTask(cmd, app, task.ID)
+	if err == nil {
+		t.Fatal("expected unknown action execution to fail")
+	}
+
+	storedTask, err := app.DB.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if storedTask.Status != actions.TaskStatusFailed {
+		t.Fatalf("unexpected task status after failed executeTask: got %q want %q", storedTask.Status, actions.TaskStatusFailed)
+	}
+}
+
+func TestRunReconCommandMarksRunFailedWhenExecutionFails(t *testing.T) {
+	app := openTestApp(t)
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	originalExecutor := taskExecutor
+	taskExecutor = func(cmd *cobra.Command, app *App, taskID string) error {
+		return fmt.Errorf("forced executor failure")
+	}
+	t.Cleanup(func() {
+		taskExecutor = originalExecutor
+	})
+
+	err := runReconCommand(cmd, app, "example.com")
+	if err == nil {
+		t.Fatal("expected runReconCommand to fail when executor fails")
+	}
+
+	var runStatus string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT status FROM runs LIMIT 1").Scan(&runStatus); err != nil {
+		t.Fatalf("query run status: %v", err)
+	}
+	if runStatus != string(actions.RunStatusFailed) {
+		t.Fatalf("unexpected run status after execution failure: got %q want %q", runStatus, actions.RunStatusFailed)
+	}
+
+	var taskStatus string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT status FROM tasks LIMIT 1").Scan(&taskStatus); err != nil {
+		t.Fatalf("query task status: %v", err)
+	}
+	if taskStatus != string(actions.TaskStatusPending) {
+		t.Fatalf("unexpected task status after execution failure: got %q want %q", taskStatus, actions.TaskStatusPending)
 	}
 }

@@ -30,7 +30,7 @@ func validateRun(run Run) error {
 	if err := requireNonEmpty("run.mode", run.Mode); err != nil {
 		return err
 	}
-	return requireNonEmpty("run.status", run.Status)
+	return requireNonEmpty("run.status", string(run.Status))
 }
 
 func validateTask(task Task) error {
@@ -40,13 +40,13 @@ func validateTask(task Task) error {
 	if err := requireNonEmpty("task.run_id", task.RunID); err != nil {
 		return err
 	}
-	if err := requireNonEmpty("task.action_type", task.ActionType); err != nil {
-		return err
-	}
 	if err := requireValidJSON("task.input_json", task.InputJSON); err != nil {
 		return err
 	}
-	return requireNonEmpty("task.status", task.Status)
+	if err := requireNonEmpty("task.action_type", string(task.ActionType)); err != nil {
+		return err
+	}
+	return requireNonEmpty("task.status", string(task.Status))
 }
 
 func validateArtifact(artifact Artifact) error {

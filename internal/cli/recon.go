@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/spf13/cobra"
 )
+
+var taskExecutor = executeTask
 
 func newReconCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
@@ -27,77 +30,62 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 		return fmt.Errorf("database is not initialized")
 	}
 
-	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	runID, taskID, err := seedRecon(cmd, app, target)
 	if err != nil {
 		return err
 	}
 
-	evidenceJSON, err := json.Marshal(map[string]string{"output": "recon output data"})
-	if err != nil {
+	if err := taskExecutor(cmd, app, taskID); err != nil {
+		if updateErr := app.DB.UpdateRunStatus(cmd.Context(), runID, actions.RunStatusFailed); updateErr != nil {
+			return fmt.Errorf("%w: mark run failed: %v", err, updateErr)
+		}
 		return err
 	}
 
-	runID := "run_" + generateID()
-	run := sqlite.Run{
-		ID:        runID,
-		Mode:      "recon",
-		Status:    "pending",
-		CreatedAt: time.Now(),
-	}
-	if err := app.DB.CreateRun(cmd.Context(), run); err != nil {
+	if err := app.DB.UpdateTaskStatus(cmd.Context(), taskID, actions.TaskStatusCompleted); err != nil {
 		return err
 	}
-	if err := app.DB.UpdateRunStatus(cmd.Context(), run.ID, "running"); err != nil {
-		return err
-	}
-
-	taskID := "task_" + generateID()
-	task := sqlite.Task{
-		ID:         taskID,
-		RunID:      runID,
-		ActionType: "recon",
-		InputJSON:  string(inputJSON),
-		Status:     "pending",
-		CreatedAt:  time.Now(),
-	}
-	if err := app.DB.CreateTask(cmd.Context(), task); err != nil {
-		return err
-	}
-	if err := app.DB.UpdateTaskStatus(cmd.Context(), task.ID, "running"); err != nil {
-		return err
-	}
-
-	artifactID := "artifact_" + generateID()
-	artifact := sqlite.Artifact{
-		ID:        artifactID,
-		TaskID:    taskID,
-		Path:      "recon_output.txt",
-		CreatedAt: time.Now(),
-	}
-	if err := app.DB.CreateArtifact(cmd.Context(), artifact); err != nil {
-		return err
-	}
-
-	evidenceID := "evidence_" + generateID()
-	evidence := sqlite.Evidence{
-		ID:        evidenceID,
-		RunID:     runID,
-		Kind:      "recon_output",
-		DataJSON:  string(evidenceJSON),
-		CreatedAt: time.Now(),
-	}
-	if err := app.DB.CreateEvidence(cmd.Context(), evidence); err != nil {
-		return err
-	}
-
-	if err := app.DB.UpdateTaskStatus(cmd.Context(), task.ID, "completed"); err != nil {
-		return err
-	}
-	if err := app.DB.UpdateRunStatus(cmd.Context(), run.ID, "completed"); err != nil {
+	if err := app.DB.UpdateRunStatus(cmd.Context(), runID, actions.RunStatusCompleted); err != nil {
 		return err
 	}
 
 	fmt.Printf("Recon completed for target: %s\n", target)
 
 	return nil
+}
+
+func seedRecon(cmd *cobra.Command, app *App, target string) (string, string, error) {
+	runID := "run_" + generateID()
+	run := sqlite.Run{
+		ID:        runID,
+		Mode:      "recon",
+		Status:    actions.RunStatusPending,
+		CreatedAt: time.Now(),
+	}
+	if err := app.DB.CreateRun(cmd.Context(), run); err != nil {
+		return "", "", err
+	}
+	if err := app.DB.UpdateRunStatus(cmd.Context(), run.ID, actions.RunStatusRunning); err != nil {
+		return "", "", err
+	}
+
+	inputJSON, err := json.Marshal(map[string]string{"target": target})
+	if err != nil {
+		return "", "", err
+	}
+
+	taskID := "task_" + generateID()
+	task := sqlite.Task{
+		ID:         taskID,
+		RunID:      runID,
+		ActionType: actions.ActionSeedTarget,
+		InputJSON:  string(inputJSON),
+		Status:     actions.TaskStatusPending,
+		CreatedAt:  time.Now(),
+	}
+	if err := app.DB.CreateTask(cmd.Context(), task); err != nil {
+		return "", "", err
+	}
+
+	return runID, taskID, nil
 }
