@@ -21,7 +21,7 @@ func TestExecutorDerivesProbeHTTPFromSeedTargetEvidence(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	inputJSON := mustMarshalTestJSON(t, seedtarget.Input{Raw: "example.com"})
+	inputJSON := mustMarshalTestJSON(t, seedtarget.Input{Raw: "1.2.3.4"})
 	seedTask := sqlite.Task{ID: "task_seed", RunID: run.ID, ActionType: actions.ActionSeedTarget, InputJSON: inputJSON, Status: actions.TaskStatusPending, CreatedAt: time.Now()}
 	if err := db.CreateTask(ctx, seedTask); err != nil {
 		t.Fatalf("create seed task: %v", err)
@@ -49,7 +49,7 @@ func TestExecutorDerivesProbeHTTPFromSeedTargetEvidence(t *testing.T) {
 	if err := json.Unmarshal([]byte(probeTask.InputJSON), &probeInput); err != nil {
 		t.Fatalf("unmarshal probe input: %v", err)
 	}
-	if probeInput.Value != "example.com" || probeInput.Type != "domain" {
+	if probeInput.Value != "1.2.3.4" || probeInput.Type != "ip" {
 		t.Fatalf("unexpected probe input: %+v", probeInput)
 	}
 }
@@ -62,13 +62,13 @@ func TestExecutorSkipsDuplicateDerivedTask(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	seedInputJSON := mustMarshalTestJSON(t, seedtarget.Input{Raw: "example.com"})
+	seedInputJSON := mustMarshalTestJSON(t, seedtarget.Input{Raw: "1.2.3.4"})
 	seedTask := sqlite.Task{ID: "task_seed", RunID: run.ID, ActionType: actions.ActionSeedTarget, InputJSON: seedInputJSON, Status: actions.TaskStatusPending, CreatedAt: time.Now()}
 	if err := db.CreateTask(ctx, seedTask); err != nil {
 		t.Fatalf("create seed task: %v", err)
 	}
 
-	probeInputJSON := mustMarshalTestJSON(t, probehttp.Input{Value: "example.com", Type: "domain"})
+	probeInputJSON := mustMarshalTestJSON(t, probehttp.Input{Value: "1.2.3.4", Type: "ip"})
 	existingProbeTask := sqlite.Task{ID: "task_probe", RunID: run.ID, ActionType: actions.ActionProbeHTTP, InputJSON: probeInputJSON, Status: actions.TaskStatusPending, CreatedAt: time.Now()}
 	if err := db.CreateTask(ctx, existingProbeTask); err != nil {
 		t.Fatalf("create existing probe task: %v", err)

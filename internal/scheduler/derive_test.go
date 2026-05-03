@@ -7,13 +7,15 @@ import (
 
 	"github.com/ruohao1/penta/internal/actions"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
+	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
 	"github.com/ruohao1/penta/internal/model"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/targets"
 )
 
-func TestDeriveFromTargetEvidenceCreatesProbeHTTPForDomain(t *testing.T) {
+func TestDeriveFromTargetEvidenceCreatesResolveDNSAndProbeHTTPForDomain(t *testing.T) {
 	candidates := deriveTargetCandidates(t, model.TargetRef{Value: "example.com", Type: targets.TypeDomain})
+	assertResolveDNSCandidate(t, candidates, "example.com")
 	assertProbeHTTPCandidate(t, candidates, "example.com", targets.TypeDomain)
 }
 
@@ -89,13 +91,7 @@ func deriveTargetCandidates(t *testing.T, target model.TargetRef) []CandidateTas
 func assertProbeHTTPCandidate(t *testing.T, candidates []CandidateTask, value string, targetType targets.Type) {
 	t.Helper()
 
-	if len(candidates) != 1 {
-		t.Fatalf("unexpected candidate count: got %d want 1", len(candidates))
-	}
-	candidate := candidates[0]
-	if candidate.ActionType != actions.ActionProbeHTTP {
-		t.Fatalf("unexpected candidate action: got %q want %q", candidate.ActionType, actions.ActionProbeHTTP)
-	}
+	candidate := findCandidate(t, candidates, actions.ActionProbeHTTP)
 	if len(candidate.ParentEvidenceIDs) != 1 || candidate.ParentEvidenceIDs[0] != "evidence_target" {
 		t.Fatalf("unexpected parent evidence IDs: %+v", candidate.ParentEvidenceIDs)
 	}
@@ -110,4 +106,36 @@ func assertProbeHTTPCandidate(t *testing.T, candidates []CandidateTask, value st
 	if input.Value != value || input.Type != targetType {
 		t.Fatalf("unexpected candidate input: %+v", input)
 	}
+}
+
+func assertResolveDNSCandidate(t *testing.T, candidates []CandidateTask, domain string) {
+	t.Helper()
+
+	candidate := findCandidate(t, candidates, actions.ActionResolveDNS)
+	if len(candidate.ParentEvidenceIDs) != 1 || candidate.ParentEvidenceIDs[0] != "evidence_target" {
+		t.Fatalf("unexpected parent evidence IDs: %+v", candidate.ParentEvidenceIDs)
+	}
+	if candidate.Reason == "" {
+		t.Fatal("expected candidate reason")
+	}
+
+	var input resolvedns.Input
+	if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
+		t.Fatalf("unmarshal resolve dns input: %v", err)
+	}
+	if input.Domain != domain {
+		t.Fatalf("unexpected resolve dns input: %+v", input)
+	}
+}
+
+func findCandidate(t *testing.T, candidates []CandidateTask, actionType actions.ActionType) CandidateTask {
+	t.Helper()
+
+	for _, candidate := range candidates {
+		if candidate.ActionType == actionType {
+			return candidate
+		}
+	}
+	t.Fatalf("candidate action %q not found in %+v", actionType, candidates)
+	return CandidateTask{}
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ruohao1/penta/internal/actions"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
+	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
 	seedtarget "github.com/ruohao1/penta/internal/actions/seed_target"
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
@@ -22,6 +23,7 @@ func registry() map[actions.ActionType]RegisteredAction {
 	return map[actions.ActionType]RegisteredAction{
 		actions.ActionSeedTarget: {Spec: seedtarget.Spec, Handler: seedtarget.Execute},
 		actions.ActionProbeHTTP:  {Spec: probehttp.Spec, Handler: probehttp.Execute},
+		actions.ActionResolveDNS: {Spec: resolvedns.Spec, Handler: resolvedns.Execute},
 	}
 }
 

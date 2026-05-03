@@ -56,8 +56,8 @@ func queryCount(t *testing.T, app *App, table string) int {
 func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	app := openTestApp(t)
 	cmd := newReconCommand(app)
-	target := "example.com"
-	cmd.SetArgs([]string{"example.com"})
+	target := "1.2.3.4"
+	cmd.SetArgs([]string{target})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute recon command: %v", err)
@@ -119,7 +119,7 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 		t.Fatalf("unexpected task raw input: got %q want %q", inputPayload["raw"], target)
 	}
 
-	assertTargetEvidence(t, app, target, "domain")
+	assertTargetEvidence(t, app, target, "ip")
 	assertServiceEvidence(t, app, target, "https", 443)
 	assertRunEventTypes(t, app, runID, []events.EventType{
 		events.EventRunCreated,
