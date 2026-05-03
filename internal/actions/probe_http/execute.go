@@ -52,6 +52,7 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 	evidence := sqlite.Evidence{
 		ID:        "evidence_" + uuid.NewString(),
 		RunID:     task.RunID,
+		TaskID:    task.ID,
 		Kind:      "service",
 		DataJSON:  string(evidenceJSON),
 		CreatedAt: time.Now(),

@@ -139,6 +139,7 @@ func TestTaskArtifactAndEvidenceCRUD(t *testing.T) {
 	evidence := Evidence{
 		ID:        "ev_1",
 		RunID:     run.ID,
+		TaskID:    task.ID,
 		Kind:      "service",
 		DataJSON:  `{"host":"example.com","port":443}`,
 		CreatedAt: now,
@@ -154,8 +155,16 @@ func TestTaskArtifactAndEvidenceCRUD(t *testing.T) {
 	if len(evidenceRows) != 1 {
 		t.Fatalf("unexpected evidence count: got %d want 1", len(evidenceRows))
 	}
-	if evidenceRows[0].ID != evidence.ID || evidenceRows[0].Kind != evidence.Kind || evidenceRows[0].DataJSON != evidence.DataJSON {
+	if evidenceRows[0].ID != evidence.ID || evidenceRows[0].TaskID != evidence.TaskID || evidenceRows[0].Kind != evidence.Kind || evidenceRows[0].DataJSON != evidence.DataJSON {
 		t.Fatalf("unexpected evidence: %+v", evidenceRows[0])
+	}
+
+	taskEvidenceRows, err := db.ListEvidenceByTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("list evidence by task: %v", err)
+	}
+	if len(taskEvidenceRows) != 1 || taskEvidenceRows[0].ID != evidence.ID {
+		t.Fatalf("unexpected task evidence: %+v", taskEvidenceRows)
 	}
 	if !evidenceRows[0].CreatedAt.Equal(evidence.CreatedAt) {
 		t.Fatalf("unexpected evidence created_at: got %v want %v", evidenceRows[0].CreatedAt, evidence.CreatedAt)

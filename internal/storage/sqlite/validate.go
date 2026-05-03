@@ -66,6 +66,9 @@ func validateEvidence(evidence Evidence) error {
 	if err := requireNonEmpty("evidence.run_id", evidence.RunID); err != nil {
 		return err
 	}
+	if err := requireNonEmpty("evidence.task_id", evidence.TaskID); err != nil {
+		return err
+	}
 	if err := requireNonEmpty("evidence.kind", evidence.Kind); err != nil {
 		return err
 	}
