@@ -12,6 +12,7 @@ import (
 	seedtarget "github.com/ruohao1/penta/internal/actions/seed_target"
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/execute"
+	"github.com/ruohao1/penta/internal/model"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/targets"
 	"github.com/spf13/cobra"
@@ -615,7 +616,7 @@ func assertServiceEvidence(t *testing.T, app *App, host, scheme string, port int
 		t.Fatalf("query service evidence: %v", err)
 	}
 
-	var payload probehttp.ServiceEvidence
+	var payload model.Service
 	if err := json.Unmarshal([]byte(evidenceJSON), &payload); err != nil {
 		t.Fatalf("unmarshal service evidence: %v", err)
 	}

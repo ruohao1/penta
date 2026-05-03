@@ -1,9 +1,9 @@
 package seed_target
 
-import "github.com/ruohao1/penta/internal/targets"
+import "github.com/ruohao1/penta/internal/model"
 
 type Input struct {
 	Raw string `json:"raw"`
 }
 
-type Evidence = targets.TargetRef
+type Evidence = model.TargetRef

@@ -19,7 +19,7 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 		return err
 	}
 
-	service := ServiceEvidence{}
+	service := Evidence{}
 	switch input.Type {
 	case targets.TypeURL:
 		parsed, err := targets.Parse(input.Value)

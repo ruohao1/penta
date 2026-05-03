@@ -6,6 +6,7 @@ import (
 
 	"github.com/ruohao1/penta/internal/actions"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
+	"github.com/ruohao1/penta/internal/model"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/targets"
 )
@@ -15,7 +16,7 @@ func DeriveFromEvidence(evidence sqlite.Evidence) ([]CandidateTask, error) {
 		return nil, nil
 	}
 
-	var target targets.TargetRef
+	var target model.TargetRef
 	if err := json.Unmarshal([]byte(evidence.DataJSON), &target); err != nil {
 		return nil, fmt.Errorf("decode target evidence %s: %w", evidence.ID, err)
 	}

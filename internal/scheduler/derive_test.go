@@ -7,27 +7,28 @@ import (
 
 	"github.com/ruohao1/penta/internal/actions"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
+	"github.com/ruohao1/penta/internal/model"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/targets"
 )
 
 func TestDeriveFromTargetEvidenceCreatesProbeHTTPForDomain(t *testing.T) {
-	candidates := deriveTargetCandidates(t, targets.TargetRef{Value: "example.com", Type: targets.TypeDomain})
+	candidates := deriveTargetCandidates(t, model.TargetRef{Value: "example.com", Type: targets.TypeDomain})
 	assertProbeHTTPCandidate(t, candidates, "example.com", targets.TypeDomain)
 }
 
 func TestDeriveFromTargetEvidenceCreatesProbeHTTPForIP(t *testing.T) {
-	candidates := deriveTargetCandidates(t, targets.TargetRef{Value: "1.2.3.4", Type: targets.TypeIP})
+	candidates := deriveTargetCandidates(t, model.TargetRef{Value: "1.2.3.4", Type: targets.TypeIP})
 	assertProbeHTTPCandidate(t, candidates, "1.2.3.4", targets.TypeIP)
 }
 
 func TestDeriveFromTargetEvidenceCreatesProbeHTTPForURL(t *testing.T) {
-	candidates := deriveTargetCandidates(t, targets.TargetRef{Value: "https://example.com/login", Type: targets.TypeURL})
+	candidates := deriveTargetCandidates(t, model.TargetRef{Value: "https://example.com/login", Type: targets.TypeURL})
 	assertProbeHTTPCandidate(t, candidates, "https://example.com/login", targets.TypeURL)
 }
 
 func TestDeriveFromTargetEvidenceIgnoresCIDR(t *testing.T) {
-	candidates := deriveTargetCandidates(t, targets.TargetRef{Value: "10.0.0.0/24", Type: targets.TypeCIDR})
+	candidates := deriveTargetCandidates(t, model.TargetRef{Value: "10.0.0.0/24", Type: targets.TypeCIDR})
 	if len(candidates) != 0 {
 		t.Fatalf("unexpected candidates: %+v", candidates)
 	}
@@ -64,7 +65,7 @@ func TestDeriveFromEvidenceRejectsInvalidTargetJSON(t *testing.T) {
 	}
 }
 
-func deriveTargetCandidates(t *testing.T, target targets.TargetRef) []CandidateTask {
+func deriveTargetCandidates(t *testing.T, target model.TargetRef) []CandidateTask {
 	t.Helper()
 
 	data, err := json.Marshal(target)
