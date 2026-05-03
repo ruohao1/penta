@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
+	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/execute"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/spf13/cobra"
 )
-
-var taskExecutor = executeTask
 
 func newReconCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
@@ -30,22 +30,41 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 		return fmt.Errorf("database is not initialized")
 	}
 
-	runID, taskID, err := seedRecon(cmd, app, target)
+	runID, err := createRun(cmd, app)
 	if err != nil {
 		return err
 	}
-
-	if err := taskExecutor(cmd, app, taskID); err != nil {
+	sink := &events.SQLiteSink{DB: app.DB}
+	executor := &execute.Executor{DB: app.DB, RunID: runID, Events: sink}
+	if err := sink.Append(cmd.Context(), events.Event{
+		RunID:       runID,
+		EventType:   events.EventRunCreated,
+		EntityKind:  events.EntityRun,
+		EntityID:    runID,
+		PayloadJSON: mustPayloadJSON(events.RunCreatedPayload{Mode: "recon"}),
+		CreatedAt:   time.Now(),
+	}); err != nil {
+		return err
+	}
+	if err := executor.Resolve(cmd.Context(), runID, execute.Request{Action: actions.ActionProbeHTTP, Raw: target}); err != nil {
 		if updateErr := app.DB.UpdateRunStatus(cmd.Context(), runID, actions.RunStatusFailed); updateErr != nil {
 			return fmt.Errorf("%w: mark run failed: %v", err, updateErr)
 		}
+		_ = sink.Append(cmd.Context(), events.Event{RunID: runID, EventType: events.EventRunFailed, EntityKind: events.EntityRun, EntityID: runID, PayloadJSON: mustPayloadJSON(map[string]string{"error": err.Error()}), CreatedAt: time.Now()})
 		return err
 	}
 
-	if err := app.DB.UpdateTaskStatus(cmd.Context(), taskID, actions.TaskStatusCompleted); err != nil {
+	if err := executor.RunUntilIdle(cmd.Context()); err != nil {
+		if updateErr := app.DB.UpdateRunStatus(cmd.Context(), runID, actions.RunStatusFailed); updateErr != nil {
+			return fmt.Errorf("%w: mark run failed: %v", err, updateErr)
+		}
+		_ = sink.Append(cmd.Context(), events.Event{RunID: runID, EventType: events.EventRunFailed, EntityKind: events.EntityRun, EntityID: runID, PayloadJSON: mustPayloadJSON(map[string]string{"error": err.Error()}), CreatedAt: time.Now()})
 		return err
 	}
 	if err := app.DB.UpdateRunStatus(cmd.Context(), runID, actions.RunStatusCompleted); err != nil {
+		return err
+	}
+	if err := sink.Append(cmd.Context(), events.Event{RunID: runID, EventType: events.EventRunCompleted, EntityKind: events.EntityRun, EntityID: runID, PayloadJSON: mustPayloadJSON(map[string]string{}), CreatedAt: time.Now()}); err != nil {
 		return err
 	}
 
@@ -54,7 +73,7 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 	return nil
 }
 
-func seedRecon(cmd *cobra.Command, app *App, target string) (string, string, error) {
+func createRun(cmd *cobra.Command, app *App) (string, error) {
 	runID := "run_" + generateID()
 	run := sqlite.Run{
 		ID:        runID,
@@ -63,29 +82,18 @@ func seedRecon(cmd *cobra.Command, app *App, target string) (string, string, err
 		CreatedAt: time.Now(),
 	}
 	if err := app.DB.CreateRun(cmd.Context(), run); err != nil {
-		return "", "", err
+		return "", err
 	}
 	if err := app.DB.UpdateRunStatus(cmd.Context(), run.ID, actions.RunStatusRunning); err != nil {
-		return "", "", err
+		return "", err
 	}
+	return runID, nil
+}
 
-	inputJSON, err := json.Marshal(actions.SeedTargetInput{Raw: target})
+func mustPayloadJSON(v any) string {
+	data, err := json.Marshal(v)
 	if err != nil {
-		return "", "", err
+		panic(err)
 	}
-
-	taskID := "task_" + generateID()
-	task := sqlite.Task{
-		ID:         taskID,
-		RunID:      runID,
-		ActionType: actions.ActionSeedTarget,
-		InputJSON:  string(inputJSON),
-		Status:     actions.TaskStatusPending,
-		CreatedAt:  time.Now(),
-	}
-	if err := app.DB.CreateTask(cmd.Context(), task); err != nil {
-		return "", "", err
-	}
-
-	return runID, taskID, nil
+	return string(data)
 }

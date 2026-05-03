@@ -3,12 +3,15 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
+	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
+	seedtarget "github.com/ruohao1/penta/internal/actions/seed_target"
+	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/execute"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/targets"
 	"github.com/spf13/cobra"
@@ -28,6 +31,13 @@ func openTestApp(t *testing.T) *App {
 	})
 
 	return &App{DB: db}
+}
+
+func runTask(t *testing.T, app *App, taskID string) error {
+	t.Helper()
+
+	executor := &execute.Executor{DB: app.DB}
+	return executor.RunTask(context.Background(), taskID)
 }
 
 func queryCount(t *testing.T, app *App, table string) int {
@@ -55,14 +65,14 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	if got := queryCount(t, app, "runs"); got != 1 {
 		t.Fatalf("unexpected runs count: got %d want 1", got)
 	}
-	if got := queryCount(t, app, "tasks"); got != 1 {
-		t.Fatalf("unexpected tasks count: got %d want 1", got)
+	if got := queryCount(t, app, "tasks"); got != 2 {
+		t.Fatalf("unexpected tasks count: got %d want 2", got)
 	}
 	if got := queryCount(t, app, "artifacts"); got != 0 {
 		t.Fatalf("unexpected artifacts count: got %d want 0", got)
 	}
-	if got := queryCount(t, app, "evidence"); got != 1 {
-		t.Fatalf("unexpected evidence count: got %d want 1", got)
+	if got := queryCount(t, app, "evidence"); got != 2 {
+		t.Fatalf("unexpected evidence count: got %d want 2", got)
 	}
 
 	var runStatus string
@@ -73,17 +83,27 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 		t.Fatalf("unexpected run status: got %q want %q", runStatus, actions.RunStatusCompleted)
 	}
 
-	var taskStatus string
-	if err := app.DB.QueryRowContext(context.Background(), "SELECT status FROM tasks LIMIT 1").Scan(&taskStatus); err != nil {
-		t.Fatalf("query task status: %v", err)
+	var runID string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT id FROM runs LIMIT 1").Scan(&runID); err != nil {
+		t.Fatalf("query run id: %v", err)
 	}
-	if taskStatus != string(actions.TaskStatusCompleted) {
-		t.Fatalf("unexpected task status: got %q want %q", taskStatus, actions.TaskStatusCompleted)
+
+	rows, err := app.DB.ListTasksByRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("unexpected listed task count: got %d want 2", len(rows))
+	}
+	for _, task := range rows {
+		if task.Status != actions.TaskStatusCompleted {
+			t.Fatalf("unexpected task status for %s: got %q want %q", task.ID, task.Status, actions.TaskStatusCompleted)
+		}
 	}
 
 	var actionType string
 	var inputJSON string
-	if err := app.DB.QueryRowContext(context.Background(), "SELECT action_type, input_json FROM tasks LIMIT 1").Scan(&actionType, &inputJSON); err != nil {
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT action_type, input_json FROM tasks WHERE action_type = ? LIMIT 1", string(actions.ActionSeedTarget)).Scan(&actionType, &inputJSON); err != nil {
 		t.Fatalf("query task payload: %v", err)
 	}
 	if actionType != string(actions.ActionSeedTarget) {
@@ -98,25 +118,22 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 		t.Fatalf("unexpected task raw input: got %q want %q", inputPayload["raw"], target)
 	}
 
-	var evidenceKind string
-	var evidenceJSON string
-	if err := app.DB.QueryRowContext(context.Background(), "SELECT kind, data_json FROM evidence LIMIT 1").Scan(&evidenceKind, &evidenceJSON); err != nil {
-		t.Fatalf("query evidence payload: %v", err)
-	}
-	if evidenceKind != "target" {
-		t.Fatalf("unexpected evidence kind: got %q want %q", evidenceKind, "target")
-	}
-
-	var evidencePayload map[string]string
-	if err := json.Unmarshal([]byte(evidenceJSON), &evidencePayload); err != nil {
-		t.Fatalf("unmarshal evidence json: %v", err)
-	}
-	if evidencePayload["value"] != target {
-		t.Fatalf("unexpected evidence value: got %q want %q", evidencePayload["value"], target)
-	}
-	if evidencePayload["type"] != "domain" {
-		t.Fatalf("unexpected evidence type: got %q want %q", evidencePayload["type"], "domain")
-	}
+	assertTargetEvidence(t, app, target, "domain")
+	assertServiceEvidence(t, app, target, "https", 443)
+	assertRunEventTypes(t, app, runID, []events.EventType{
+		events.EventRunCreated,
+		events.EventActionRequested,
+		events.EventTaskEnqueued,
+		events.EventTaskEnqueued,
+		events.EventActionResolved,
+		events.EventTaskStarted,
+		events.EventEvidenceCreated,
+		events.EventTaskCompleted,
+		events.EventTaskStarted,
+		events.EventEvidenceCreated,
+		events.EventTaskCompleted,
+		events.EventRunCompleted,
+	})
 }
 
 func TestReconCommandRequiresTarget(t *testing.T) {
@@ -161,7 +178,7 @@ func TestExecuteTaskCreatesArtifactsAndEvidenceForSeedTarget(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	if err := executeTask(cmd, app, task.ID); err != nil {
+	if err := runTask(t, app, task.ID); err != nil {
 		t.Fatalf("execute task: %v", err)
 	}
 
@@ -169,8 +186,8 @@ func TestExecuteTaskCreatesArtifactsAndEvidenceForSeedTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get task: %v", err)
 	}
-	if storedTask.Status != actions.TaskStatusRunning {
-		t.Fatalf("unexpected task status after executeTask: got %q want %q", storedTask.Status, actions.TaskStatusRunning)
+	if storedTask.Status != actions.TaskStatusCompleted {
+		t.Fatalf("unexpected task status after executeTask: got %q want %q", storedTask.Status, actions.TaskStatusCompleted)
 	}
 
 	if got := queryCount(t, app, "artifacts"); got != 0 {
@@ -233,7 +250,7 @@ func TestExecuteTaskClassifiesIPTarget(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	if err := executeTask(cmd, app, task.ID); err != nil {
+	if err := runTask(t, app, task.ID); err != nil {
 		t.Fatalf("execute task: %v", err)
 	}
 
@@ -287,7 +304,7 @@ func TestExecuteTaskClassifiesURLTarget(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	if err := executeTask(cmd, app, task.ID); err != nil {
+	if err := runTask(t, app, task.ID); err != nil {
 		t.Fatalf("execute task: %v", err)
 	}
 
@@ -329,7 +346,7 @@ func TestExecuteTaskClassifiesCIDRTarget(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	if err := executeTask(cmd, app, task.ID); err != nil {
+	if err := runTask(t, app, task.ID); err != nil {
 		t.Fatalf("execute task: %v", err)
 	}
 
@@ -367,7 +384,7 @@ func TestExecuteTaskClassifiesServiceTarget(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	if err := executeTask(cmd, app, task.ID); err != nil {
+	if err := runTask(t, app, task.ID); err != nil {
 		t.Fatalf("execute task: %v", err)
 	}
 
@@ -405,7 +422,7 @@ func TestExecuteTaskClassifiesIPRangeTarget(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	if err := executeTask(cmd, app, task.ID); err != nil {
+	if err := runTask(t, app, task.ID); err != nil {
 		t.Fatalf("execute task: %v", err)
 	}
 
@@ -454,7 +471,7 @@ func TestExecuteTaskMarksUnknownActionFailed(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	err = executeTask(cmd, app, task.ID)
+	err = runTask(t, app, task.ID)
 	if err == nil {
 		t.Fatal("expected unknown action execution to fail")
 	}
@@ -478,7 +495,7 @@ func TestExecuteTaskHandlesProbeHTTPDomain(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	inputJSON, err := json.Marshal(actions.ProbeHTTPInput{Value: "example.com", Type: targets.TypeDomain})
+	inputJSON, err := json.Marshal(probehttp.Input{Value: "example.com", Type: targets.TypeDomain})
 	if err != nil {
 		t.Fatalf("marshal probe input: %v", err)
 	}
@@ -488,7 +505,7 @@ func TestExecuteTaskHandlesProbeHTTPDomain(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	if err := executeTask(cmd, app, task.ID); err != nil {
+	if err := runTask(t, app, task.ID); err != nil {
 		t.Fatalf("execute task: %v", err)
 	}
 
@@ -505,7 +522,7 @@ func TestExecuteTaskHandlesProbeHTTPIP(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	inputJSON, err := json.Marshal(actions.ProbeHTTPInput{Value: "1.2.3.4", Type: targets.TypeIP})
+	inputJSON, err := json.Marshal(probehttp.Input{Value: "1.2.3.4", Type: targets.TypeIP})
 	if err != nil {
 		t.Fatalf("marshal probe input: %v", err)
 	}
@@ -515,7 +532,7 @@ func TestExecuteTaskHandlesProbeHTTPIP(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	if err := executeTask(cmd, app, task.ID); err != nil {
+	if err := runTask(t, app, task.ID); err != nil {
 		t.Fatalf("execute task: %v", err)
 	}
 
@@ -532,7 +549,7 @@ func TestExecuteTaskHandlesProbeHTTPURL(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	inputJSON, err := json.Marshal(actions.ProbeHTTPInput{Value: "https://example.com:8443/foo?a=b", Type: targets.TypeURL})
+	inputJSON, err := json.Marshal(probehttp.Input{Value: "https://example.com:8443/foo?a=b", Type: targets.TypeURL})
 	if err != nil {
 		t.Fatalf("marshal probe input: %v", err)
 	}
@@ -542,7 +559,7 @@ func TestExecuteTaskHandlesProbeHTTPURL(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	if err := executeTask(cmd, app, task.ID); err != nil {
+	if err := runTask(t, app, task.ID); err != nil {
 		t.Fatalf("execute task: %v", err)
 	}
 
@@ -559,7 +576,7 @@ func TestExecuteTaskRejectsProbeHTTPCIDR(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	inputJSON, err := json.Marshal(actions.ProbeHTTPInput{Value: "10.0.0.0/24", Type: targets.TypeCIDR})
+	inputJSON, err := json.Marshal(probehttp.Input{Value: "10.0.0.0/24", Type: targets.TypeCIDR})
 	if err != nil {
 		t.Fatalf("marshal probe input: %v", err)
 	}
@@ -576,7 +593,7 @@ func TestExecuteTaskRejectsProbeHTTPCIDR(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 
-	err = executeTask(cmd, app, task.ID)
+	err = runTask(t, app, task.ID)
 	if err == nil {
 		t.Fatal("expected probe_http cidr execution to fail")
 	}
@@ -593,16 +610,12 @@ func TestExecuteTaskRejectsProbeHTTPCIDR(t *testing.T) {
 func assertServiceEvidence(t *testing.T, app *App, host, scheme string, port int) {
 	t.Helper()
 
-	var evidenceKind string
 	var evidenceJSON string
-	if err := app.DB.QueryRowContext(context.Background(), "SELECT kind, data_json FROM evidence LIMIT 1").Scan(&evidenceKind, &evidenceJSON); err != nil {
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT data_json FROM evidence WHERE kind = ? LIMIT 1", "service").Scan(&evidenceJSON); err != nil {
 		t.Fatalf("query service evidence: %v", err)
 	}
-	if evidenceKind != "service" {
-		t.Fatalf("unexpected evidence kind: got %q want %q", evidenceKind, "service")
-	}
 
-	var payload actions.ServiceEvidence
+	var payload probehttp.ServiceEvidence
 	if err := json.Unmarshal([]byte(evidenceJSON), &payload); err != nil {
 		t.Fatalf("unmarshal service evidence: %v", err)
 	}
@@ -611,20 +624,50 @@ func assertServiceEvidence(t *testing.T, app *App, host, scheme string, port int
 	}
 }
 
+func assertTargetEvidence(t *testing.T, app *App, value, targetType string) {
+	t.Helper()
+
+	var evidenceJSON string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT data_json FROM evidence WHERE kind = ? LIMIT 1", "target").Scan(&evidenceJSON); err != nil {
+		t.Fatalf("query target evidence: %v", err)
+	}
+
+	var payload seedtarget.Evidence
+	if err := json.Unmarshal([]byte(evidenceJSON), &payload); err != nil {
+		t.Fatalf("unmarshal target evidence: %v", err)
+	}
+	if payload.Value != value || string(payload.Type) != targetType {
+		t.Fatalf("unexpected target evidence: %+v", payload)
+	}
+}
+
+func assertRunEventTypes(t *testing.T, app *App, runID string, want []events.EventType) {
+	t.Helper()
+
+	sink := &events.SQLiteSink{DB: app.DB}
+	got, err := sink.ListByRunSinceSeq(context.Background(), runID, 0, 100)
+	if err != nil {
+		t.Fatalf("list run events: %v", err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected event count: got %d want %d", len(got), len(want))
+	}
+	for i, evt := range got {
+		if evt.Seq != int64(i+1) {
+			t.Fatalf("unexpected event seq at %d: got %d want %d", i, evt.Seq, i+1)
+		}
+		if evt.EventType != want[i] {
+			t.Fatalf("unexpected event type at %d: got %q want %q", i, evt.EventType, want[i])
+		}
+	}
+}
+
 func TestRunReconCommandMarksRunFailedWhenExecutionFails(t *testing.T) {
 	app := openTestApp(t)
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
 
-	originalExecutor := taskExecutor
-	taskExecutor = func(cmd *cobra.Command, app *App, taskID string) error {
-		return fmt.Errorf("forced executor failure")
-	}
-	t.Cleanup(func() {
-		taskExecutor = originalExecutor
-	})
-
-	err := runReconCommand(cmd, app, "example.com")
+	err := runReconCommand(cmd, app, "")
 	if err == nil {
 		t.Fatal("expected runReconCommand to fail when executor fails")
 	}
@@ -637,11 +680,7 @@ func TestRunReconCommandMarksRunFailedWhenExecutionFails(t *testing.T) {
 		t.Fatalf("unexpected run status after execution failure: got %q want %q", runStatus, actions.RunStatusFailed)
 	}
 
-	var taskStatus string
-	if err := app.DB.QueryRowContext(context.Background(), "SELECT status FROM tasks LIMIT 1").Scan(&taskStatus); err != nil {
-		t.Fatalf("query task status: %v", err)
-	}
-	if taskStatus != string(actions.TaskStatusPending) {
-		t.Fatalf("unexpected task status after execution failure: got %q want %q", taskStatus, actions.TaskStatusPending)
+	if got := queryCount(t, app, "tasks"); got != 0 {
+		t.Fatalf("unexpected tasks count after resolver failure: got %d want 0", got)
 	}
 }

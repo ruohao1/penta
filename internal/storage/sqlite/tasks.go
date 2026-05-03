@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
@@ -74,17 +75,36 @@ func (db *DB) UpdateTaskStatus(ctx context.Context, taskID string, status action
 }
 
 func (db *DB) NextPendingTask(ctx context.Context) (*Task, error) {
-	row := db.QueryRowContext(ctx, `
+	return db.nextPendingTask(ctx, "")
+}
+
+func (db *DB) NextPendingTaskByRun(ctx context.Context, runID string) (*Task, error) {
+	return db.nextPendingTask(ctx, runID)
+}
+
+func (db *DB) nextPendingTask(ctx context.Context, runID string) (*Task, error) {
+	query := `
 		SELECT id, run_id, action_type, input_json, status, created_at
 		FROM tasks
-		WHERE status = 'pending'
+		WHERE status = 'pending'`
+	args := []any{}
+	if runID != "" {
+		query += ` AND run_id = ?`
+		args = append(args, runID)
+	}
+	query += `
 		ORDER BY created_at ASC
 		LIMIT 1
-	`)
-	
+	`
+
+	row := db.QueryRowContext(ctx, query, args...)
+
 	var task Task
 	if err := row.Scan(&task.ID, &task.RunID, &task.ActionType, &task.InputJSON, &task.Status, &task.CreatedAt); err != nil {
-		return nil, err;
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
 	}
 	return &task, nil
 }

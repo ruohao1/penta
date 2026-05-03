@@ -1,8 +1,11 @@
-package actions
+package probe_http
 
 import "github.com/ruohao1/penta/internal/targets"
 
-type ProbeHTTPInput = targets.TargetRef
+type Input struct {
+	Value string       `json:"value"`
+	Type  targets.Type `json:"type"`
+}
 
 type ServiceEvidence struct {
 	Scheme string `json:"scheme,omitempty"`

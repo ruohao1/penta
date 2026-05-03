@@ -4,7 +4,10 @@ type ActionType string
 
 const (
 	ActionSeedTarget ActionType = "seed_target"
-	ActionProbeHTTP	 ActionType = "probe_http"
+	ActionProbeHTTP  ActionType = "probe_http"
+	ActionResolveDNS ActionType = "resolve_dns"
+	ActionFetchRoot  ActionType = "fetch_root"
+	ActionCrawl      ActionType = "crawl"
 )
 
 type TaskStatus string
