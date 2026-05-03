@@ -49,17 +49,18 @@ type stdoutReporter struct {
 	verbosity     Verbosity
 	startedAt     time.Time
 	printedPhases map[string]bool
+	styles        cliStyles
 }
 
-func newStdoutReporter(out io.Writer, verbosity Verbosity) *stdoutReporter {
-	return &stdoutReporter{out: out, verbosity: verbosity, startedAt: time.Now(), printedPhases: map[string]bool{}}
+func newStdoutReporter(out io.Writer, verbosity Verbosity, color bool) *stdoutReporter {
+	return &stdoutReporter{out: out, verbosity: verbosity, startedAt: time.Now(), printedPhases: map[string]bool{}, styles: newCLIStyles(color)}
 }
 
 func (r *stdoutReporter) RunStarted(runID, target string) {
 	if r.verbosity == VerbosityQuiet {
 		return
 	}
-	fprintf(r.out, "Recon started\nRun     %s\nTarget  %s\n\n", runID, target)
+	fprintf(r.out, "%s\nRun     %s\nTarget  %s\n\n", r.styles.heading.Render("Recon started"), runID, target)
 }
 
 func (r *stdoutReporter) Event(evt events.Event) {
@@ -82,7 +83,7 @@ func (r *stdoutReporter) RunCompleted(runID string) {
 		fprintf(r.out, "Recon completed: %s\n", runID)
 		return
 	}
-	fprintf(r.out, "Recon completed\n")
+	fprintf(r.out, "%s\n", r.styles.success.Render("Recon completed"))
 }
 
 func (r *stdoutReporter) RunFailed(runID string, err error) {
@@ -90,7 +91,7 @@ func (r *stdoutReporter) RunFailed(runID string, err error) {
 		fprintf(r.out, "Recon failed: %s: %v\n", runID, err)
 		return
 	}
-	fprintf(r.out, "Recon failed\n%s\n", err)
+	fprintf(r.out, "%s\n%s\n", r.styles.failure.Render("Recon failed"), err)
 }
 
 func (r *stdoutReporter) renderPhase(evt events.Event) {
@@ -99,7 +100,7 @@ func (r *stdoutReporter) renderPhase(evt events.Event) {
 		return
 	}
 	r.printedPhases[phase] = true
-	fprintf(r.out, "%s...\n", phase)
+	fprintf(r.out, "%s\n", r.styles.phase.Render(phase+"..."))
 }
 
 func phaseForEvent(evt events.Event) (string, bool) {
@@ -127,7 +128,7 @@ func (r *stdoutReporter) renderVerbose(evt events.Event) {
 	if !ok {
 		return
 	}
-	fprintf(r.out, "[%s] %-8s %s\n", r.elapsed(), label, detail)
+	fprintf(r.out, "[%s] %-8s %s\n", r.elapsed(), r.styles.label(label), detail)
 }
 
 func (r *stdoutReporter) renderDebug(evt events.Event, includePayload bool) {
@@ -135,7 +136,7 @@ func (r *stdoutReporter) renderDebug(evt events.Event, includePayload bool) {
 	if includePayload && evt.PayloadJSON != "" {
 		line += " payload=" + evt.PayloadJSON
 	}
-	fprintf(r.out, "%s\n", line)
+	fprintf(r.out, "%s\n", r.styles.debug.Render(line))
 }
 
 func compactEvent(evt events.Event) (string, string, bool) {

@@ -36,7 +36,7 @@ func TestVerbosityFromFlags(t *testing.T) {
 
 func TestStdoutReporterQuietSuppressesLiveEvents(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityQuiet)
+	reporter := newStdoutReporter(&out, VerbosityQuiet, false)
 	reporter.RunStarted("run_1", "example.com")
 	reporter.Event(taskStartedEvent(actions.ActionSeedTarget))
 	reporter.RunCompleted("run_1")
@@ -52,7 +52,7 @@ func TestStdoutReporterQuietSuppressesLiveEvents(t *testing.T) {
 
 func TestStdoutReporterNormalPrintsDedupedPhases(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityNormal)
+	reporter := newStdoutReporter(&out, VerbosityNormal, false)
 	reporter.Event(taskStartedEvent(actions.ActionSeedTarget))
 	reporter.Event(taskStartedEvent(actions.ActionSeedTarget))
 	reporter.Event(taskStartedEvent(actions.ActionProbeHTTP))
@@ -71,7 +71,7 @@ func TestStdoutReporterNormalPrintsDedupedPhases(t *testing.T) {
 
 func TestStdoutReporterVerbosePrintsLifecycle(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityVerbose)
+	reporter := newStdoutReporter(&out, VerbosityVerbose, false)
 	reporter.Event(taskStartedEvent(actions.ActionProbeHTTP))
 	reporter.Event(evidenceCreatedEvent("service"))
 
@@ -86,12 +86,22 @@ func TestStdoutReporterVerbosePrintsLifecycle(t *testing.T) {
 
 func TestStdoutReporterTracePrintsPayload(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityTrace)
+	reporter := newStdoutReporter(&out, VerbosityTrace, false)
 	reporter.Event(taskStartedEvent(actions.ActionProbeHTTP))
 
 	got := out.String()
 	if !strings.Contains(got, "event task.started") || !strings.Contains(got, "payload=") {
 		t.Fatalf("trace output missing event payload: %q", got)
+	}
+}
+
+func TestCLIStylesDisabledRenderPlainText(t *testing.T) {
+	styles := newCLIStyles(false)
+	if got := styles.success.Render("Recon completed"); got != "Recon completed" {
+		t.Fatalf("disabled style rendered %q", got)
+	}
+	if got := styles.label("running"); got != "running" {
+		t.Fatalf("disabled label style rendered %q", got)
 	}
 }
 

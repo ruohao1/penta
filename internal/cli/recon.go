@@ -15,6 +15,7 @@ import (
 func newReconCommand(app *App) *cobra.Command {
 	var verboseCount int
 	var quiet bool
+	var noColor bool
 
 	cmd := &cobra.Command{
 		Use:   "recon",
@@ -26,6 +27,7 @@ func newReconCommand(app *App) *cobra.Command {
 	}
 	cmd.Flags().CountVarP(&verboseCount, "verbose", "v", "increase output verbosity")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "only print final status and errors")
+	cmd.Flags().BoolVar(&noColor, "no-color", false, "disable colored output")
 
 	return cmd
 }
@@ -40,7 +42,7 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 		return err
 	}
 	verbosity := verbosityFromFlags(flagBool(cmd, "quiet"), flagCount(cmd, "verbose"))
-	reporter := newStdoutReporter(cmd.OutOrStdout(), verbosity)
+	reporter := newStdoutReporter(cmd.OutOrStdout(), verbosity, !flagBool(cmd, "no-color"))
 	reporter.RunStarted(runID, target)
 	sink := reportingSink{inner: &events.SQLiteSink{DB: app.DB}, reporter: reporter}
 	executor := &execute.Executor{DB: app.DB, RunID: runID, Events: sink}
