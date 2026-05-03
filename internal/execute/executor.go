@@ -8,6 +8,7 @@ import (
 
 	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/policy"
 	"github.com/ruohao1/penta/internal/scheduler"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 )
@@ -133,8 +134,13 @@ func (e *Executor) enqueueFollowOns(ctx context.Context, task *sqlite.Task) erro
 			return err
 		}
 		for _, candidate := range candidates {
-			if _, ok := registered[candidate.ActionType]; !ok {
+			action, ok := registered[candidate.ActionType]
+			if !ok {
 				return fmt.Errorf("derived unsupported action type: %s", candidate.ActionType)
+			}
+			evaluation := policy.Evaluate(action.Spec)
+			if evaluation.Decision != policy.DecisionAllowed {
+				continue
 			}
 			exists, err := e.DB.TaskExistsByRunActionInput(ctx, task.RunID, candidate.ActionType, candidate.InputJSON)
 			if err != nil {
