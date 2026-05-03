@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/viewmodel"
 )
 
 type Verbosity int
@@ -40,7 +42,7 @@ func verbosityFromFlags(quiet bool, verboseCount int) Verbosity {
 type RunReporter interface {
 	RunStarted(runID, target string)
 	Event(evt events.Event)
-	RunCompleted(runID string)
+	RunCompleted(summary *viewmodel.RunSummary)
 	RunFailed(runID string, err error)
 }
 
@@ -78,12 +80,17 @@ func (r *stdoutReporter) Event(evt events.Event) {
 	}
 }
 
-func (r *stdoutReporter) RunCompleted(runID string) {
+func (r *stdoutReporter) RunCompleted(summary *viewmodel.RunSummary) {
 	if r.verbosity == VerbosityQuiet {
-		fprintf(r.out, "Recon completed: %s\n", runID)
+		fprintf(r.out, "Recon completed: %s\n", summary.RunID)
 		return
 	}
-	fprintf(r.out, "%s\n", r.styles.success.Render("Recon completed"))
+	fprintf(r.out, "%s\n\n", r.styles.success.Render("Recon completed"))
+	fprintf(r.out, "Run        %s\n", summary.RunID)
+	fprintf(r.out, "Status     %s\n", summary.Status)
+	fprintf(r.out, "Tasks      %s\n", formatTaskCounts(summary.TaskCounts))
+	fprintf(r.out, "Evidence   %s\n", formatEvidenceCounts(summary.EvidenceCounts))
+	fprintf(r.out, "Database   %s\n", summary.DBPath)
 }
 
 func (r *stdoutReporter) RunFailed(runID string, err error) {
@@ -186,6 +193,32 @@ func (r *stdoutReporter) elapsed() string {
 	minutes := int(elapsed.Minutes())
 	seconds := int(elapsed.Seconds()) % 60
 	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+func formatTaskCounts(counts map[actions.TaskStatus]int) string {
+	return fmt.Sprintf("%d completed / %d failed / %d pending", counts[actions.TaskStatusCompleted], counts[actions.TaskStatusFailed], counts[actions.TaskStatusPending])
+}
+
+func formatEvidenceCounts(counts map[string]int) string {
+	ordered := []string{"target", "dns_record", "service", "http_response"}
+	parts := make([]string, 0, len(counts))
+	seen := map[string]bool{}
+	for _, kind := range ordered {
+		if count := counts[kind]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", count, kind))
+			seen[kind] = true
+		}
+	}
+	for kind, count := range counts {
+		if seen[kind] || count == 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%d %s", count, kind))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, " / ")
 }
 
 type reportingSink struct {

@@ -9,6 +9,7 @@ import (
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/execute"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
+	"github.com/ruohao1/penta/internal/viewmodel"
 	"github.com/spf13/cobra"
 )
 
@@ -80,7 +81,15 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 		return err
 	}
 
-	reporter.RunCompleted(runID)
+	dbPath := ""
+	if app.Config != nil {
+		dbPath = app.Config.Storage.DBPath
+	}
+	summary, err := viewmodel.BuildRunSummary(cmd.Context(), app.DB, runID, dbPath)
+	if err != nil {
+		return err
+	}
+	reporter.RunCompleted(summary)
 
 	return nil
 }

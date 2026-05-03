@@ -8,6 +8,7 @@ import (
 
 	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/viewmodel"
 )
 
 func TestVerbosityFromFlags(t *testing.T) {
@@ -39,7 +40,7 @@ func TestStdoutReporterQuietSuppressesLiveEvents(t *testing.T) {
 	reporter := newStdoutReporter(&out, VerbosityQuiet, false)
 	reporter.RunStarted("run_1", "example.com")
 	reporter.Event(taskStartedEvent(actions.ActionSeedTarget))
-	reporter.RunCompleted("run_1")
+	reporter.RunCompleted(&viewmodel.RunSummary{RunID: "run_1"})
 
 	got := out.String()
 	if strings.Contains(got, "Discovering target") || strings.Contains(got, "running") {
@@ -47,6 +48,31 @@ func TestStdoutReporterQuietSuppressesLiveEvents(t *testing.T) {
 	}
 	if !strings.Contains(got, "Recon completed: run_1") {
 		t.Fatalf("quiet output missing completion: %q", got)
+	}
+}
+
+func TestStdoutReporterNormalPrintsRunSummary(t *testing.T) {
+	var out bytes.Buffer
+	reporter := newStdoutReporter(&out, VerbosityNormal, false)
+	reporter.RunCompleted(&viewmodel.RunSummary{
+		RunID:  "run_1",
+		Status: actions.RunStatusCompleted,
+		DBPath: "/tmp/penta.db",
+		TaskCounts: map[actions.TaskStatus]int{
+			actions.TaskStatusCompleted: 2,
+			actions.TaskStatusFailed:    1,
+		},
+		EvidenceCounts: map[string]int{
+			"target":  1,
+			"service": 2,
+		},
+	})
+
+	got := out.String()
+	for _, want := range []string{"Recon completed", "Run        run_1", "Status     completed", "Tasks      2 completed / 1 failed / 0 pending", "Evidence   1 target / 2 service", "Database   /tmp/penta.db"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("summary output missing %q in %q", want, got)
+		}
 	}
 }
 
