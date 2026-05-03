@@ -13,6 +13,9 @@ import (
 )
 
 func newReconCommand(app *App) *cobra.Command {
+	var verboseCount int
+	var quiet bool
+
 	cmd := &cobra.Command{
 		Use:   "recon",
 		Short: "Run recon commands",
@@ -21,6 +24,8 @@ func newReconCommand(app *App) *cobra.Command {
 			return runReconCommand(cmd, app, args[0])
 		},
 	}
+	cmd.Flags().CountVarP(&verboseCount, "verbose", "v", "increase output verbosity")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "only print final status and errors")
 
 	return cmd
 }
@@ -34,7 +39,10 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 	if err != nil {
 		return err
 	}
-	sink := &events.SQLiteSink{DB: app.DB}
+	verbosity := verbosityFromFlags(flagBool(cmd, "quiet"), flagCount(cmd, "verbose"))
+	reporter := newStdoutReporter(cmd.OutOrStdout(), verbosity)
+	reporter.RunStarted(runID, target)
+	sink := reportingSink{inner: &events.SQLiteSink{DB: app.DB}, reporter: reporter}
 	executor := &execute.Executor{DB: app.DB, RunID: runID, Events: sink}
 	if err := sink.Append(cmd.Context(), events.Event{
 		RunID:       runID,
@@ -51,6 +59,7 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 			return fmt.Errorf("%w: mark run failed: %v", err, updateErr)
 		}
 		_ = sink.Append(cmd.Context(), events.Event{RunID: runID, EventType: events.EventRunFailed, EntityKind: events.EntityRun, EntityID: runID, PayloadJSON: mustPayloadJSON(map[string]string{"error": err.Error()}), CreatedAt: time.Now()})
+		reporter.RunFailed(runID, err)
 		return err
 	}
 
@@ -59,6 +68,7 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 			return fmt.Errorf("%w: mark run failed: %v", err, updateErr)
 		}
 		_ = sink.Append(cmd.Context(), events.Event{RunID: runID, EventType: events.EventRunFailed, EntityKind: events.EntityRun, EntityID: runID, PayloadJSON: mustPayloadJSON(map[string]string{"error": err.Error()}), CreatedAt: time.Now()})
+		reporter.RunFailed(runID, err)
 		return err
 	}
 	if err := app.DB.UpdateRunStatus(cmd.Context(), runID, actions.RunStatusCompleted); err != nil {
@@ -68,9 +78,25 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 		return err
 	}
 
-	fmt.Printf("Recon completed for target: %s\n", target)
+	reporter.RunCompleted(runID)
 
 	return nil
+}
+
+func flagBool(cmd *cobra.Command, name string) bool {
+	value, err := cmd.Flags().GetBool(name)
+	if err != nil {
+		return false
+	}
+	return value
+}
+
+func flagCount(cmd *cobra.Command, name string) int {
+	value, err := cmd.Flags().GetCount(name)
+	if err != nil {
+		return 0
+	}
+	return value
 }
 
 func createRun(cmd *cobra.Command, app *App) (string, error) {
