@@ -1,42 +1,48 @@
 # AGENTS
 
-## Scope
-- This repo is still early, but it now has a small Cobra CLI plus config wiring. Primary docs are `README.md` (overview) and `docs/architecture.md` (detailed target design).
-- Treat architecture docs as intended design, not proof that all planned directories or subsystems are implemented yet.
+## Repo Reality
+- This is an early Go CLI for Penta, an AI-assisted offensive security workflow engine; `README.md` and `docs/architecture.md` are architecture guardrails, not proof that planned subsystems exist.
+- Current entrypoint is `cmd/penta/main.go`; Cobra wiring lives in `internal/cli`, with `penta recon <target>` as the implemented command.
+- Current core packages are `internal/actions`, `internal/execute`, `internal/scheduler`, `internal/events`, `internal/storage/sqlite`, `internal/targets`, and `internal/config`.
+- Use dedicated branches for new work; keep slices small and compiling before committing.
 
-## Current repo reality
-- `go test ./...` currently covers only the bootstrap CLI/config packages; most planned subsystems are still not implemented.
-- Do not write instructions that assume build, lint, CI, migrations, or codegen flows exist until the repo actually adds them.
+## Commands
+- Run all tests: `go test ./...`
+- Run a focused package: `go test ./internal/scheduler`
+- Run one test: `go test ./internal/targets -run TestParseDomain`
+- Run the CLI without writing to the default user state DB: `PENTA_STORAGE_DB_PATH=/tmp/penta.db go run ./cmd/penta recon example.com`
+- No Makefile, CI, lint, formatter, migration, or codegen config is currently present; do not invent those workflows.
 
-## Architecture guardrails
-- Build this as a single-process modular monolith, not microservices.
-- Keep the main boundary explicit:
-- Control plane: campaign manager, scheduler/frontier, planner, policy/approval, reporter.
-- Data plane: tool runtime, raw artifacts, normalizers, evidence store/graph, retrieval.
-- The typed action catalog is the center of the system. Design new modules around actions, not around prompts or tools.
+## Config And Storage
+- Config uses Viper: optional `penta.yaml` is read from `.`, `.penta`, or the XDG config dir.
+- Env vars use the `PENTA_` prefix with `_` for nested keys, e.g. `PENTA_STORAGE_DB_PATH`.
+- Default DB path is under XDG state, usually `~/.local/state/penta/penta.db`; `config.Load()` creates config/state/cache/data dirs.
+- SQLite schema is embedded in `internal/storage/sqlite/schema.go`; there is no migration framework yet.
+- Tests use temp SQLite DBs; follow that pattern instead of touching the default runtime DB.
 
-## Planner and policy rules
-- The LLM is a planner only. It may summarize evidence, create hypotheses, and propose typed next actions.
-- The LLM must not execute tools directly, emit shell commands, or bypass the action catalog.
-- Policy decides allow, block, rate-limit, or approval-required. Do not hardcode mode-specific behavior throughout the codebase.
+## Architecture Rules
+- Build v1 as a single-process modular monolith; defer microservices until there is a concrete scaling, isolation, deployment, or ownership need.
+- Keep typed actions central; planner, scheduler, policy, executor, and reporting should work around action specs and evidence, not shell commands.
+- The LLM is planner-only: it may summarize evidence, form hypotheses, and propose typed actions, but must not execute tools or emit shell commands.
+- Policy should decide allow, block, rate-limit, or approval-required; do not scatter mode-specific `if mode == ...` behavior.
+- Prefer SQLite for metadata/state and filesystem storage for raw artifacts until the repo adds a concrete reason to change.
 
-## v1 defaults
-- Prefer SQLite for metadata/state and filesystem storage for raw artifacts.
-- Use a persistent frontier/task store, not an in-memory queue only.
-- Keep tool execution thin and deterministic; normalization is a separate stage.
-- Require structured planner output with evidence citations.
+## Action Model
+- Shared action types/specs live in `internal/actions`; concrete action packages live under `internal/actions/<action_name>`.
+- Runnable actions are registered in `internal/execute/registry.go` with `ActionSpec + Handler`.
+- Current runnable handlers are `seed_target` and `probe_http`; `resolve_dns`, `fetch_root`, and `crawl` currently only have contracts/stubs.
+- `probe_http` means HTTP service discovery and produces `service` evidence; `fetch_root` should be the action that produces `http_response`.
+- Actions execute one deterministic operation and produce evidence; they should not enqueue their own follow-ups.
 
-## Avoid early overengineering
-- Do not start with microservices, a graph database, a vector database, or a "full autonomous agent".
-- Do not let raw tool output become the DB model; normalize into typed evidence first.
-- Do not make the planner the center of the architecture; the action/task model should drive scheduler, policy, runtime, and reporting.
+## Execution Flow
+- Executor runs tasks from SQLite, marks status, emits events, and persists evidence through action handlers.
+- Evidence rows include `task_id`; use task-linked evidence for derivation instead of reprocessing whole-run evidence.
+- `internal/scheduler` derives candidate tasks from evidence, e.g. `target(domain|ip|url) -> probe_http`.
+- Executor currently enqueues scheduler-derived candidates and skips exact duplicate `(run_id, action_type, input_json)` tasks.
+- Future policy gates should sit between scheduler candidates and task enqueueing.
 
-## Implementation bias
-- The next foundational work should define the task/action schema and the first small action catalog before adding broad subsystem surface area.
-- When code starts landing, verify new package boundaries against the control-plane/data-plane split instead of mirroring the aspirational `README.md` tree blindly.
-
-## Git hygiene for agent changes
-- Keep changes small and reviewable (prefer focused diffs over broad rewrites).
-- Before finishing, verify the modification actually matches the current branch purpose/scope.
-- If branch intent is unclear, ask for clarification before making broad or unrelated edits.
-- Do not mix refactors with feature work on the same branch unless explicitly requested.
+## Implementation Hygiene
+- Treat docs as guardrails, but verify current code before adding planned subsystems.
+- Keep diffs focused; do not mix broad refactors with feature work unless explicitly requested.
+- Do not commit unless `go test ./...` passes.
+- If branch intent is unclear, ask before changing architecture or package boundaries.
