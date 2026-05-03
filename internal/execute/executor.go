@@ -109,11 +109,15 @@ func (e *Executor) RunUntilIdle(ctx context.Context) error {
 }
 
 func (e *Executor) executeTask(ctx context.Context, task *sqlite.Task) error {
-	handler, ok := handlers()[task.ActionType]
+	registered := registry()
+	if err := validateRegistry(registered); err != nil {
+		return err
+	}
+	action, ok := registered[task.ActionType]
 	if !ok {
 		return fmt.Errorf("unsupported action type: %s", task.ActionType)
 	}
-	return handler(ctx, e.DB, e.Events, task)
+	return action.Handler(ctx, e.DB, e.Events, task)
 }
 
 func (e *Executor) enqueueFollowOns(ctx context.Context, task *sqlite.Task) error {
