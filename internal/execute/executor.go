@@ -8,6 +8,7 @@ import (
 
 	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/scheduler"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 )
 
@@ -121,6 +122,32 @@ func (e *Executor) executeTask(ctx context.Context, task *sqlite.Task) error {
 }
 
 func (e *Executor) enqueueFollowOns(ctx context.Context, task *sqlite.Task) error {
+	evidenceRows, err := e.DB.ListEvidenceByTask(ctx, task.ID)
+	if err != nil {
+		return err
+	}
+	registered := registry()
+	for _, evidence := range evidenceRows {
+		candidates, err := scheduler.DeriveFromEvidence(evidence)
+		if err != nil {
+			return err
+		}
+		for _, candidate := range candidates {
+			if _, ok := registered[candidate.ActionType]; !ok {
+				return fmt.Errorf("derived unsupported action type: %s", candidate.ActionType)
+			}
+			exists, err := e.DB.TaskExistsByRunActionInput(ctx, task.RunID, candidate.ActionType, candidate.InputJSON)
+			if err != nil {
+				return err
+			}
+			if exists {
+				continue
+			}
+			if err := e.enqueueTask(ctx, task.RunID, candidate.ActionType, candidate.InputJSON); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

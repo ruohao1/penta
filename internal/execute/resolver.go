@@ -81,26 +81,7 @@ func (e *Executor) enqueueSeedTarget(ctx context.Context, runID, raw string) err
 	if err != nil {
 		return err
 	}
-
-	task := sqlite.Task{
-		ID:         "task_" + uuid.NewString(),
-		RunID:      runID,
-		ActionType: actions.ActionSeedTarget,
-		InputJSON:  string(inputJSON),
-		Status:     actions.TaskStatusPending,
-		CreatedAt:  time.Now(),
-	}
-	if err := e.DB.CreateTask(ctx, task); err != nil {
-		return err
-	}
-	return e.appendEvent(ctx, events.Event{
-		RunID:       runID,
-		EventType:   events.EventTaskEnqueued,
-		EntityKind:  events.EntityTask,
-		EntityID:    task.ID,
-		PayloadJSON: mustPayloadJSON(events.TaskEnqueuedPayload{ActionType: task.ActionType, Status: task.Status}),
-		CreatedAt:   time.Now(),
-	})
+	return e.enqueueTask(ctx, runID, actions.ActionSeedTarget, string(inputJSON))
 }
 
 func (e *Executor) enqueueProbeHTTP(ctx context.Context, runID string, input probehttp.Input) error {
@@ -108,12 +89,15 @@ func (e *Executor) enqueueProbeHTTP(ctx context.Context, runID string, input pro
 	if err != nil {
 		return err
 	}
+	return e.enqueueTask(ctx, runID, actions.ActionProbeHTTP, string(inputJSON))
+}
 
+func (e *Executor) enqueueTask(ctx context.Context, runID string, actionType actions.ActionType, inputJSON string) error {
 	task := sqlite.Task{
 		ID:         "task_" + uuid.NewString(),
 		RunID:      runID,
-		ActionType: actions.ActionProbeHTTP,
-		InputJSON:  string(inputJSON),
+		ActionType: actionType,
+		InputJSON:  inputJSON,
 		Status:     actions.TaskStatusPending,
 		CreatedAt:  time.Now(),
 	}

@@ -74,6 +74,18 @@ func (db *DB) UpdateTaskStatus(ctx context.Context, taskID string, status action
 	return err
 }
 
+func (db *DB) TaskExistsByRunActionInput(ctx context.Context, runID string, actionType actions.ActionType, inputJSON string) (bool, error) {
+	var count int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM tasks
+		WHERE run_id = ? AND action_type = ? AND input_json = ?
+	`, runID, string(actionType), inputJSON).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (db *DB) NextPendingTask(ctx context.Context) (*Task, error) {
 	return db.nextPendingTask(ctx, "")
 }
