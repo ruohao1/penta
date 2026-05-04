@@ -61,8 +61,9 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 	if err != nil {
 		return err
 	}
+	sinks := commandSinks(cmd, app)
 	verbosity := verbosityFromFlags(flagBool(cmd, "quiet"), flagCount(cmd, "verbose"))
-	reporter := newStdoutReporter(cmd.OutOrStdout(), verbosity, !flagBool(cmd, "no-color"))
+	reporter := newStdoutReporter(sinks.Out, verbosity, !flagBool(cmd, "no-color"))
 	reporter.RunStarted(runID, target)
 	if session != nil {
 		reporter.SessionSelected(*session)
@@ -117,7 +118,7 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 			return err
 		}
 		if verbosity != VerbosityQuiet {
-			fmt.Fprintf(cmd.OutOrStdout(), "\nReport written: %s\n", outputPath)
+			sinks.Printf("\nReport written: %s\n", outputPath)
 		}
 	}
 

@@ -25,6 +25,7 @@ func newSessionCreateCommand(app *App) *cobra.Command {
 		Short: "Create a scanning session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sinks := commandSinks(cmd, app)
 			if app == nil || app.DB == nil {
 				return fmt.Errorf("database is not initialized")
 			}
@@ -37,7 +38,7 @@ func newSessionCreateCommand(app *App) *cobra.Command {
 			if err := app.DB.CreateSession(cmd.Context(), session); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Session created\nID      %s\nName    %s\nKind    %s\nStatus  %s\n", session.ID, session.Name, session.Kind, session.Status)
+			sinks.Printf("Session created\nID      %s\nName    %s\nKind    %s\nStatus  %s\n", session.ID, session.Name, session.Kind, session.Status)
 			return nil
 		},
 	}
@@ -51,6 +52,7 @@ func newSessionListCommand(app *App) *cobra.Command {
 		Short: "List scanning sessions",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sinks := commandSinks(cmd, app)
 			if app == nil || app.DB == nil {
 				return fmt.Errorf("database is not initialized")
 			}
@@ -59,11 +61,11 @@ func newSessionListCommand(app *App) *cobra.Command {
 				return err
 			}
 			if len(sessions) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No sessions")
+				sinks.Printf("No sessions\n")
 				return nil
 			}
 			for _, session := range sessions {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\n", session.ID, session.Name, session.Kind, session.Status)
+				sinks.Printf("%s\t%s\t%s\t%s\n", session.ID, session.Name, session.Kind, session.Status)
 			}
 			return nil
 		},
@@ -76,6 +78,7 @@ func newSessionShowCommand(app *App) *cobra.Command {
 		Short: "Show a scanning session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sinks := commandSinks(cmd, app)
 			if app == nil || app.DB == nil {
 				return fmt.Errorf("database is not initialized")
 			}
@@ -84,20 +87,20 @@ func newSessionShowCommand(app *App) *cobra.Command {
 				return err
 			}
 			session := summary.Session
-			fmt.Fprintf(cmd.OutOrStdout(), "ID        %s\nName      %s\nKind      %s\nStatus    %s\nRuns      %s\nTasks     %s\nEvidence  %s\n", session.ID, session.Name, session.Kind, session.Status, formatRunCounts(summary.RunCounts), reporting.FormatTaskCounts(summary.TaskCounts), reporting.FormatEvidenceCounts(summary.EvidenceCounts))
+			sinks.Printf("ID        %s\nName      %s\nKind      %s\nStatus    %s\nRuns      %s\nTasks     %s\nEvidence  %s\n", session.ID, session.Name, session.Kind, session.Status, formatRunCounts(summary.RunCounts), reporting.FormatTaskCounts(summary.TaskCounts), reporting.FormatEvidenceCounts(summary.EvidenceCounts))
 			if !summary.LatestRunAt.IsZero() {
-				fmt.Fprintf(cmd.OutOrStdout(), "Latest   %s\n", summary.LatestRunAt.Format(time.RFC3339))
+				sinks.Printf("Latest   %s\n", summary.LatestRunAt.Format(time.RFC3339))
 			}
 			if len(summary.ScopeRules) > 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "\nScope")
+				sinks.Printf("\nScope\n")
 				for _, rule := range summary.ScopeRules {
-					fmt.Fprintf(cmd.OutOrStdout(), "- %s %s %s (%s)\n", rule.Effect, rule.TargetType, rule.Value, rule.ID)
+					sinks.Printf("- %s %s %s (%s)\n", rule.Effect, rule.TargetType, rule.Value, rule.ID)
 				}
 			}
 			if len(summary.Runs) > 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "\nRuns")
+				sinks.Printf("\nRuns\n")
 				for _, run := range summary.Runs {
-					fmt.Fprintf(cmd.OutOrStdout(), "- %s %s %s %s\n", run.ID, run.Mode, run.Status, run.CreatedAt.Format(time.RFC3339))
+					sinks.Printf("- %s %s %s %s\n", run.ID, run.Mode, run.Status, run.CreatedAt.Format(time.RFC3339))
 				}
 			}
 			return nil
@@ -111,13 +114,14 @@ func newSessionArchiveCommand(app *App) *cobra.Command {
 		Short: "Archive a scanning session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sinks := commandSinks(cmd, app)
 			if app == nil || app.DB == nil {
 				return fmt.Errorf("database is not initialized")
 			}
 			if err := app.DB.ArchiveSession(cmd.Context(), args[0], time.Now()); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Session archived: %s\n", args[0])
+			sinks.Printf("Session archived: %s\n", args[0])
 			return nil
 		},
 	}
@@ -137,6 +141,7 @@ func newSessionScopeAddCommand(app *App) *cobra.Command {
 		Short: "Add a session scope rule",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sinks := commandSinks(cmd, app)
 			if app == nil || app.DB == nil {
 				return fmt.Errorf("database is not initialized")
 			}
@@ -155,7 +160,7 @@ func newSessionScopeAddCommand(app *App) *cobra.Command {
 			if err := app.DB.CreateScopeRule(cmd.Context(), rule); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Scope rule added\nID      %s\nEffect  %s\nType    %s\nValue   %s\n", rule.ID, rule.Effect, rule.TargetType, rule.Value)
+			sinks.Printf("Scope rule added\nID      %s\nEffect  %s\nType    %s\nValue   %s\n", rule.ID, rule.Effect, rule.TargetType, rule.Value)
 			return nil
 		},
 	}
@@ -170,6 +175,7 @@ func newSessionScopeListCommand(app *App) *cobra.Command {
 		Short: "List session scope rules",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sinks := commandSinks(cmd, app)
 			if app == nil || app.DB == nil {
 				return fmt.Errorf("database is not initialized")
 			}
@@ -178,11 +184,11 @@ func newSessionScopeListCommand(app *App) *cobra.Command {
 				return err
 			}
 			if len(rules) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No scope rules")
+				sinks.Printf("No scope rules\n")
 				return nil
 			}
 			for _, rule := range rules {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\n", rule.ID, rule.Effect, rule.TargetType, rule.Value)
+				sinks.Printf("%s\t%s\t%s\t%s\n", rule.ID, rule.Effect, rule.TargetType, rule.Value)
 			}
 			return nil
 		},
@@ -196,13 +202,14 @@ func newSessionScopeRemoveCommand(app *App) *cobra.Command {
 		Short:   "Remove a session scope rule",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sinks := commandSinks(cmd, app)
 			if app == nil || app.DB == nil {
 				return fmt.Errorf("database is not initialized")
 			}
 			if err := app.DB.DeleteScopeRule(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Scope rule removed: %s\n", args[0])
+			sinks.Printf("Scope rule removed: %s\n", args[0])
 			return nil
 		},
 	}
