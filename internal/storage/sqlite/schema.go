@@ -64,6 +64,8 @@ CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
 `
 
 func (db *DB) Init(ctx context.Context) error {
-	_, err := db.ExecContext(ctx, schemaSQL)
-	return err
+	if _, err := db.ExecContext(ctx, schemaSQL); err != nil {
+		return err
+	}
+	return db.Migrate(ctx)
 }

@@ -2,11 +2,13 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
+	_ "modernc.org/sqlite"
 )
 
 func openTestDB(t *testing.T) *DB {
@@ -51,6 +53,77 @@ func TestOpenInitializesSchema(t *testing.T) {
 
 	if !got.CreatedAt.Equal(run.CreatedAt) {
 		t.Fatalf("unexpected created_at: got %v want %v", got.CreatedAt, run.CreatedAt)
+	}
+}
+
+func TestOpenSetsSchemaVersion(t *testing.T) {
+	db := openTestDB(t)
+
+	var version int
+	if err := db.QueryRowContext(context.Background(), `PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatalf("read schema version: %v", err)
+	}
+	if version != currentSchemaVersion {
+		t.Fatalf("unexpected schema version: got %d want %d", version, currentSchemaVersion)
+	}
+}
+
+func TestOpenMigratesLegacySchemaAndIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := rawDB.ExecContext(ctx, schemaSQL); err != nil {
+		_ = rawDB.Close()
+		t.Fatalf("create legacy schema: %v", err)
+	}
+	if err := rawDB.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	db, err := Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close migrated db: %v", err)
+	}
+
+	db, err = Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("reopen migrated db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	var version int
+	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatalf("read schema version: %v", err)
+	}
+	if version != currentSchemaVersion {
+		t.Fatalf("unexpected schema version after reopen: got %d want %d", version, currentSchemaVersion)
+	}
+}
+
+func TestOpenRejectsNewerSchemaVersion(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "future.db")
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := rawDB.ExecContext(ctx, `PRAGMA user_version = 999`); err != nil {
+		_ = rawDB.Close()
+		t.Fatalf("set future schema version: %v", err)
+	}
+	if err := rawDB.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	_, err = Open(ctx, dbPath)
+	if err == nil {
+		t.Fatal("expected newer schema version to fail")
 	}
 }
 
