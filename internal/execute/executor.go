@@ -7,10 +7,14 @@ import (
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
+	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
+	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/policy"
 	"github.com/ruohao1/penta/internal/scheduler"
+	"github.com/ruohao1/penta/internal/scope"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
+	"github.com/ruohao1/penta/internal/targets"
 )
 
 type Executor struct {
@@ -128,6 +132,17 @@ func (e *Executor) enqueueFollowOns(ctx context.Context, task *sqlite.Task) erro
 		return err
 	}
 	registered := registry()
+	run, err := e.DB.GetRun(ctx, task.RunID)
+	if err != nil {
+		return err
+	}
+	var scopeRules []sqlite.ScopeRule
+	if run.SessionID != "" {
+		scopeRules, err = e.DB.ListScopeRulesBySession(ctx, run.SessionID)
+		if err != nil {
+			return err
+		}
+	}
 	for _, evidence := range evidenceRows {
 		candidates, err := scheduler.DeriveFromEvidence(evidence)
 		if err != nil {
@@ -140,6 +155,9 @@ func (e *Executor) enqueueFollowOns(ctx context.Context, task *sqlite.Task) erro
 			}
 			evaluation := policy.Evaluate(action.Spec)
 			if evaluation.Decision != policy.DecisionAllowed {
+				continue
+			}
+			if !candidateAllowedBySessionScope(candidate, run.SessionID, scopeRules) {
 				continue
 			}
 			exists, err := e.DB.TaskExistsByRunActionInput(ctx, task.RunID, candidate.ActionType, candidate.InputJSON)
@@ -155,6 +173,38 @@ func (e *Executor) enqueueFollowOns(ctx context.Context, task *sqlite.Task) erro
 		}
 	}
 	return nil
+}
+
+func candidateAllowedBySessionScope(candidate scheduler.CandidateTask, sessionID string, rules []sqlite.ScopeRule) bool {
+	if sessionID == "" {
+		return true
+	}
+	target, ok, err := targetFromCandidate(candidate)
+	if err != nil || !ok {
+		return true
+	}
+	return scope.EvaluateTarget(target, rules).Allowed
+}
+
+func targetFromCandidate(candidate scheduler.CandidateTask) (targets.Target, bool, error) {
+	switch candidate.ActionType {
+	case actions.ActionProbeHTTP:
+		var input probehttp.Input
+		if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
+			return nil, false, err
+		}
+		target, err := targets.Parse(input.Value)
+		return target, true, err
+	case actions.ActionResolveDNS:
+		var input resolvedns.Input
+		if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
+			return nil, false, err
+		}
+		target, err := targets.Parse(input.Domain)
+		return target, true, err
+	default:
+		return nil, false, nil
+	}
 }
 
 func (e *Executor) appendEvent(ctx context.Context, evt events.Event) error {
