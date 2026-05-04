@@ -5,7 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ruohao1/penta/internal/actions"
+	"github.com/ruohao1/penta/internal/reporting"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
+	"github.com/ruohao1/penta/internal/viewmodel"
 	"github.com/spf13/cobra"
 )
 
@@ -76,23 +79,25 @@ func newSessionShowCommand(app *App) *cobra.Command {
 			if app == nil || app.DB == nil {
 				return fmt.Errorf("database is not initialized")
 			}
-			session, err := app.DB.GetSession(cmd.Context(), args[0])
+			summary, err := viewmodel.BuildSessionSummary(cmd.Context(), app.DB, args[0])
 			if err != nil {
 				return err
 			}
-			rules, err := app.DB.ListScopeRulesBySession(cmd.Context(), session.ID)
-			if err != nil {
-				return err
+			session := summary.Session
+			fmt.Fprintf(cmd.OutOrStdout(), "ID        %s\nName      %s\nKind      %s\nStatus    %s\nRuns      %s\nTasks     %s\nEvidence  %s\n", session.ID, session.Name, session.Kind, session.Status, formatRunCounts(summary.RunCounts), reporting.FormatTaskCounts(summary.TaskCounts), reporting.FormatEvidenceCounts(summary.EvidenceCounts))
+			if !summary.LatestRunAt.IsZero() {
+				fmt.Fprintf(cmd.OutOrStdout(), "Latest   %s\n", summary.LatestRunAt.Format(time.RFC3339))
 			}
-			runs, err := app.DB.ListRunsBySession(cmd.Context(), session.ID)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "ID      %s\nName    %s\nKind    %s\nStatus  %s\nRuns    %d\n", session.ID, session.Name, session.Kind, session.Status, len(runs))
-			if len(rules) > 0 {
+			if len(summary.ScopeRules) > 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "\nScope")
-				for _, rule := range rules {
+				for _, rule := range summary.ScopeRules {
 					fmt.Fprintf(cmd.OutOrStdout(), "- %s %s %s (%s)\n", rule.Effect, rule.TargetType, rule.Value, rule.ID)
+				}
+			}
+			if len(summary.Runs) > 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "\nRuns")
+				for _, run := range summary.Runs {
+					fmt.Fprintf(cmd.OutOrStdout(), "- %s %s %s %s\n", run.ID, run.Mode, run.Status, run.CreatedAt.Format(time.RFC3339))
 				}
 			}
 			return nil
@@ -229,4 +234,8 @@ func scopeEffectFromFlags(include, exclude bool) (sqlite.ScopeEffect, error) {
 		return sqlite.ScopeEffectInclude, nil
 	}
 	return sqlite.ScopeEffectExclude, nil
+}
+
+func formatRunCounts(counts map[actions.RunStatus]int) string {
+	return fmt.Sprintf("%d completed / %d failed / %d running / %d pending", counts[actions.RunStatusCompleted], counts[actions.RunStatusFailed], counts[actions.RunStatusRunning], counts[actions.RunStatusPending])
 }

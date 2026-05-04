@@ -22,7 +22,7 @@ func TestSessionCommandsCreateListShowAndArchive(t *testing.T) {
 	}
 
 	showOut := executeSessionCommand(t, app, "show", sessionID)
-	if !strings.Contains(showOut, "Runs    0") || !strings.Contains(showOut, "Status  active") {
+	if !strings.Contains(showOut, "Runs      0 completed / 0 failed / 0 running / 0 pending") || !strings.Contains(showOut, "Status    active") {
 		t.Fatalf("unexpected show output: %q", showOut)
 	}
 
@@ -31,8 +31,26 @@ func TestSessionCommandsCreateListShowAndArchive(t *testing.T) {
 		t.Fatalf("unexpected archive output: %q", archiveOut)
 	}
 	showOut = executeSessionCommand(t, app, "show", sessionID)
-	if !strings.Contains(showOut, "Status  archived") {
+	if !strings.Contains(showOut, "Status    archived") {
 		t.Fatalf("unexpected archived show output: %q", showOut)
+	}
+}
+
+func TestSessionShowIncludesRunTaskAndEvidenceSummary(t *testing.T) {
+	app := openTestApp(t)
+	executeSessionCommand(t, app, "create", "Acme", "--kind", "bugbounty")
+	sessionID := firstSessionID(t, app)
+	cmd := newReconCommand(app)
+	cmd.SetArgs([]string{"--session", sessionID, "1.2.3.4", "-q"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute recon command: %v", err)
+	}
+
+	showOut := executeSessionCommand(t, app, "show", sessionID)
+	for _, want := range []string{"Runs      1 completed / 0 failed / 0 running / 0 pending", "Tasks     2 completed / 0 failed / 0 pending", "Evidence  1 target / 1 service", "Runs\n- run_"} {
+		if !strings.Contains(showOut, want) {
+			t.Fatalf("session show missing %q in %q", want, showOut)
+		}
 	}
 }
 
