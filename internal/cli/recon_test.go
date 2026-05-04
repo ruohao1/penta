@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,6 +147,58 @@ func TestReconCommandRequiresTarget(t *testing.T) {
 
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected missing target to fail")
+	}
+}
+
+func TestReconCommandWritesMarkdownReport(t *testing.T) {
+	app := openTestApp(t)
+	cmd := newReconCommand(app)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	reportPath := filepath.Join(t.TempDir(), "report.md")
+	cmd.SetArgs([]string{"--no-color", "-o", reportPath, "1.2.3.4"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute recon command: %v", err)
+	}
+
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	got := string(data)
+	for _, want := range []string{"# Penta Recon Report", "## Summary", "## Evidence", "- **target**: ip 1.2.3.4", "- **service**: https 1.2.3.4:443"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("report missing %q in %q", want, got)
+		}
+	}
+	if !strings.Contains(out.String(), "Report written: "+reportPath) {
+		t.Fatalf("stdout missing report path: %q", out.String())
+	}
+}
+
+func TestReconCommandDoesNotOverwriteExistingReport(t *testing.T) {
+	app := openTestApp(t)
+	cmd := newReconCommand(app)
+	reportPath := filepath.Join(t.TempDir(), "report.md")
+	if err := os.WriteFile(reportPath, []byte("existing"), 0o644); err != nil {
+		t.Fatalf("write existing report: %v", err)
+	}
+	cmd.SetArgs([]string{"-q", "-o", reportPath, "1.2.3.4"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected existing report file to fail")
+	}
+	if !strings.Contains(err.Error(), "report file already exists") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, readErr := os.ReadFile(reportPath)
+	if readErr != nil {
+		t.Fatalf("read existing report: %v", readErr)
+	}
+	if string(data) != "existing" {
+		t.Fatalf("existing report was overwritten: %q", data)
 	}
 }
 

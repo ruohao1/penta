@@ -30,9 +30,9 @@ func TestBuildRunSummaryCountsTasksAndEvidence(t *testing.T) {
 	}
 
 	evidenceRows := []sqlite.Evidence{
-		{ID: "evidence_1", RunID: run.ID, TaskID: "task_1", Kind: "target", DataJSON: `{}`, CreatedAt: time.Now()},
-		{ID: "evidence_2", RunID: run.ID, TaskID: "task_2", Kind: "service", DataJSON: `{}`, CreatedAt: time.Now()},
-		{ID: "evidence_3", RunID: run.ID, TaskID: "task_2", Kind: "service", DataJSON: `{}`, CreatedAt: time.Now()},
+		{ID: "evidence_1", RunID: run.ID, TaskID: "task_1", Kind: "target", DataJSON: `{"value":"example.com","type":"domain"}`, CreatedAt: time.Now()},
+		{ID: "evidence_2", RunID: run.ID, TaskID: "task_2", Kind: "service", DataJSON: `{"scheme":"https","host":"example.com","port":443}`, CreatedAt: time.Now()},
+		{ID: "evidence_3", RunID: run.ID, TaskID: "task_2", Kind: "service", DataJSON: `{"scheme":"http","host":"example.com","port":80}`, CreatedAt: time.Now()},
 	}
 	for _, evidence := range evidenceRows {
 		if err := db.CreateEvidence(ctx, evidence); err != nil {
@@ -52,6 +52,12 @@ func TestBuildRunSummaryCountsTasksAndEvidence(t *testing.T) {
 	}
 	if summary.EvidenceCounts["target"] != 1 || summary.EvidenceCounts["service"] != 2 {
 		t.Fatalf("unexpected evidence counts: %+v", summary.EvidenceCounts)
+	}
+	if len(summary.Evidence) != 3 {
+		t.Fatalf("unexpected evidence summary count: got %d want 3", len(summary.Evidence))
+	}
+	if summary.Evidence[0].Label != "domain example.com" || summary.Evidence[1].Label != "https example.com:443" {
+		t.Fatalf("unexpected evidence summaries: %+v", summary.Evidence)
 	}
 }
 

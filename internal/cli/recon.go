@@ -3,11 +3,13 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/execute"
+	"github.com/ruohao1/penta/internal/reporting"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/viewmodel"
 	"github.com/spf13/cobra"
@@ -17,6 +19,7 @@ func newReconCommand(app *App) *cobra.Command {
 	var verboseCount int
 	var quiet bool
 	var noColor bool
+	var outputPath string
 
 	cmd := &cobra.Command{
 		Use:   "recon",
@@ -29,6 +32,7 @@ func newReconCommand(app *App) *cobra.Command {
 	cmd.Flags().CountVarP(&verboseCount, "verbose", "v", "increase output verbosity")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "only print final status and errors")
 	cmd.Flags().BoolVar(&noColor, "no-color", false, "disable colored output")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "write markdown report to file")
 
 	return cmd
 }
@@ -90,7 +94,30 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 		return err
 	}
 	reporter.RunCompleted(summary)
+	if outputPath := flagString(cmd, "output"); outputPath != "" {
+		if err := writeMarkdownReport(outputPath, summary); err != nil {
+			return err
+		}
+		if verbosity != VerbosityQuiet {
+			fmt.Fprintf(cmd.OutOrStdout(), "\nReport written: %s\n", outputPath)
+		}
+	}
 
+	return nil
+}
+
+func writeMarkdownReport(path string, summary *viewmodel.RunSummary) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("report file already exists: %s", path)
+		}
+		return fmt.Errorf("write report %s: %w", path, err)
+	}
+	defer func() { _ = file.Close() }()
+	if _, err := file.WriteString(reporting.RenderMarkdownReport(summary)); err != nil {
+		return fmt.Errorf("write report %s: %w", path, err)
+	}
 	return nil
 }
 
@@ -106,6 +133,14 @@ func flagCount(cmd *cobra.Command, name string) int {
 	value, err := cmd.Flags().GetCount(name)
 	if err != nil {
 		return 0
+	}
+	return value
+}
+
+func flagString(cmd *cobra.Command, name string) string {
+	value, err := cmd.Flags().GetString(name)
+	if err != nil {
+		return ""
 	}
 	return value
 }
