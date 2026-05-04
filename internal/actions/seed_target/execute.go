@@ -9,6 +9,7 @@ import (
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/targets"
+	"github.com/ruohao1/penta/internal/viewmodel"
 )
 
 func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.Task) error {
@@ -39,6 +40,10 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 		DataJSON:  string(evidenceJSON),
 		CreatedAt: time.Now(),
 	}
+	label, err := viewmodel.EvidenceLabel(evidence)
+	if err != nil {
+		return err
+	}
 	if err := db.CreateEvidence(ctx, evidence); err != nil {
 		return err
 	}
@@ -51,7 +56,7 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 		EventType:   events.EventEvidenceCreated,
 		EntityKind:  events.EntityEvidence,
 		EntityID:    evidence.ID,
-		PayloadJSON: mustPayloadJSON(events.EvidenceCreatedPayload{Kind: evidence.Kind}),
+		PayloadJSON: mustPayloadJSON(events.EvidenceCreatedPayload{Kind: evidence.Kind, Label: label}),
 		CreatedAt:   time.Now(),
 	})
 }

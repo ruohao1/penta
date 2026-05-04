@@ -12,6 +12,7 @@ import (
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/model"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
+	"github.com/ruohao1/penta/internal/viewmodel"
 )
 
 type Resolver interface {
@@ -64,6 +65,10 @@ func executeWithResolver(ctx context.Context, db *sqlite.DB, sink events.Sink, t
 		DataJSON:  string(evidenceJSON),
 		CreatedAt: time.Now(),
 	}
+	label, err := viewmodel.EvidenceLabel(evidence)
+	if err != nil {
+		return err
+	}
 	if err := db.CreateEvidence(ctx, evidence); err != nil {
 		return err
 	}
@@ -76,7 +81,7 @@ func executeWithResolver(ctx context.Context, db *sqlite.DB, sink events.Sink, t
 		EventType:   events.EventEvidenceCreated,
 		EntityKind:  events.EntityEvidence,
 		EntityID:    evidence.ID,
-		PayloadJSON: mustPayloadJSON(events.EvidenceCreatedPayload{Kind: evidence.Kind}),
+		PayloadJSON: mustPayloadJSON(events.EvidenceCreatedPayload{Kind: evidence.Kind, Label: label}),
 		CreatedAt:   time.Now(),
 	})
 }

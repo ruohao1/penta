@@ -70,7 +70,7 @@ func (r *stdoutReporter) Event(evt events.Event) {
 	case VerbosityQuiet:
 		return
 	case VerbosityNormal:
-		r.renderPhase(evt)
+		r.renderNormal(evt)
 	case VerbosityVerbose:
 		r.renderVerbose(evt)
 	case VerbosityDebug:
@@ -78,6 +78,18 @@ func (r *stdoutReporter) Event(evt events.Event) {
 	default:
 		r.renderDebug(evt, true)
 	}
+}
+
+func (r *stdoutReporter) renderNormal(evt events.Event) {
+	if evt.EventType == events.EventEvidenceCreated {
+		kind, label, ok := evidencePayload(evt.PayloadJSON)
+		if !ok {
+			return
+		}
+		fprintf(r.out, "%s\n", r.styles.evidence.Render(discoveryLine(kind, label)))
+		return
+	}
+	r.renderPhase(evt)
 }
 
 func (r *stdoutReporter) RunCompleted(summary *viewmodel.RunSummary) {
@@ -161,8 +173,11 @@ func compactEvent(evt events.Event) (string, string, bool) {
 		actionType, ok := actionTypeFromPayload(evt.PayloadJSON)
 		return "failed", string(actionType), ok
 	case events.EventEvidenceCreated:
-		kind, ok := evidenceKindFromPayload(evt.PayloadJSON)
-		return "evidence", kind, ok
+		kind, label, ok := evidencePayload(evt.PayloadJSON)
+		if label == "" {
+			label = kind
+		}
+		return "evidence", label, ok
 	default:
 		return "", "", false
 	}
@@ -178,14 +193,31 @@ func actionTypeFromPayload(payload string) (actions.ActionType, bool) {
 	return data.ActionType, true
 }
 
-func evidenceKindFromPayload(payload string) (string, bool) {
+func evidencePayload(payload string) (string, string, bool) {
 	var data struct {
-		Kind string `json:"kind"`
+		Kind  string `json:"kind"`
+		Label string `json:"label"`
 	}
 	if err := json.Unmarshal([]byte(payload), &data); err != nil || data.Kind == "" {
-		return "", false
+		return "", "", false
 	}
-	return data.Kind, true
+	return data.Kind, data.Label, true
+}
+
+func discoveryLine(kind, label string) string {
+	switch kind {
+	case "target":
+		return "Found target: " + label
+	case "dns_record":
+		return "Found DNS: " + label
+	case "service":
+		return "Found service: " + label
+	default:
+		if label == "" {
+			label = kind
+		}
+		return "Found " + kind + ": " + label
+	}
 }
 
 func (r *stdoutReporter) elapsed() string {

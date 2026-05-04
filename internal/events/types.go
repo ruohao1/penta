@@ -73,5 +73,6 @@ type TaskFailedPayload struct {
 }
 
 type EvidenceCreatedPayload struct {
-	Kind string `json:"kind"`
+	Kind  string `json:"kind"`
+	Label string `json:"label,omitempty"`
 }

@@ -95,6 +95,17 @@ func TestStdoutReporterNormalPrintsDedupedPhases(t *testing.T) {
 	}
 }
 
+func TestStdoutReporterNormalPrintsDiscoveries(t *testing.T) {
+	var out bytes.Buffer
+	reporter := newStdoutReporter(&out, VerbosityNormal, false)
+	reporter.Event(evidenceCreatedEventWithLabel("service", "https example.com:443"))
+
+	got := out.String()
+	if !strings.Contains(got, "Found service: https example.com:443") {
+		t.Fatalf("normal output missing discovery: %q", got)
+	}
+}
+
 func TestStdoutReporterVerbosePrintsLifecycle(t *testing.T) {
 	var out bytes.Buffer
 	reporter := newStdoutReporter(&out, VerbosityVerbose, false)
@@ -142,11 +153,15 @@ func taskStartedEvent(actionType actions.ActionType) events.Event {
 }
 
 func evidenceCreatedEvent(kind string) events.Event {
+	return evidenceCreatedEventWithLabel(kind, "")
+}
+
+func evidenceCreatedEventWithLabel(kind, label string) events.Event {
 	return events.Event{
 		EventType:   events.EventEvidenceCreated,
 		EntityKind:  events.EntityEvidence,
 		EntityID:    "evidence_1",
-		PayloadJSON: mustPayloadJSON(events.EvidenceCreatedPayload{Kind: kind}),
+		PayloadJSON: mustPayloadJSON(events.EvidenceCreatedPayload{Kind: kind, Label: label}),
 		CreatedAt:   time.Now(),
 	}
 }
