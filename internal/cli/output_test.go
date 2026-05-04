@@ -37,7 +37,7 @@ func TestVerbosityFromFlags(t *testing.T) {
 
 func TestStdoutReporterQuietSuppressesLiveEvents(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityQuiet, false)
+	reporter := newStdoutReporter(&out, VerbosityQuiet, false, false)
 	reporter.RunStarted("run_1", "example.com")
 	reporter.Event(taskStartedEvent(actions.ActionSeedTarget))
 	reporter.RunCompleted(&viewmodel.RunSummary{RunID: "run_1"})
@@ -53,7 +53,7 @@ func TestStdoutReporterQuietSuppressesLiveEvents(t *testing.T) {
 
 func TestStdoutReporterNormalPrintsRunSummary(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityNormal, false)
+	reporter := newStdoutReporter(&out, VerbosityNormal, false, false)
 	reporter.RunCompleted(&viewmodel.RunSummary{
 		RunID:  "run_1",
 		Status: actions.RunStatusCompleted,
@@ -78,7 +78,7 @@ func TestStdoutReporterNormalPrintsRunSummary(t *testing.T) {
 
 func TestStdoutReporterNormalPrintsDedupedPhases(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityNormal, false)
+	reporter := newStdoutReporter(&out, VerbosityNormal, false, false)
 	reporter.Event(taskStartedEvent(actions.ActionSeedTarget))
 	reporter.Event(taskStartedEvent(actions.ActionSeedTarget))
 	reporter.Event(taskStartedEvent(actions.ActionProbeHTTP))
@@ -97,7 +97,7 @@ func TestStdoutReporterNormalPrintsDedupedPhases(t *testing.T) {
 
 func TestStdoutReporterNormalPrintsDiscoveries(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityNormal, false)
+	reporter := newStdoutReporter(&out, VerbosityNormal, false, false)
 	reporter.Event(evidenceCreatedEventWithLabel("service", "https example.com:443"))
 
 	got := out.String()
@@ -108,7 +108,7 @@ func TestStdoutReporterNormalPrintsDiscoveries(t *testing.T) {
 
 func TestStdoutReporterNormalPrintsScopeBlocks(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityNormal, false)
+	reporter := newStdoutReporter(&out, VerbosityNormal, false, false)
 	reporter.Event(candidateBlockedEvent(actions.ActionProbeHTTP, "target 1.2.3.4 is not included in session scope"))
 
 	got := out.String()
@@ -119,7 +119,7 @@ func TestStdoutReporterNormalPrintsScopeBlocks(t *testing.T) {
 
 func TestStdoutReporterVerbosePrintsLifecycle(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityVerbose, false)
+	reporter := newStdoutReporter(&out, VerbosityVerbose, false, false)
 	reporter.Event(taskStartedEvent(actions.ActionProbeHTTP))
 	reporter.Event(evidenceCreatedEvent("service"))
 	reporter.Event(candidateBlockedEvent(actions.ActionProbeHTTP, "target 1.2.3.4 is not included in session scope"))
@@ -138,7 +138,7 @@ func TestStdoutReporterVerbosePrintsLifecycle(t *testing.T) {
 
 func TestStdoutReporterTracePrintsPayload(t *testing.T) {
 	var out bytes.Buffer
-	reporter := newStdoutReporter(&out, VerbosityTrace, false)
+	reporter := newStdoutReporter(&out, VerbosityTrace, false, false)
 	reporter.Event(taskStartedEvent(actions.ActionProbeHTTP))
 
 	got := out.String()

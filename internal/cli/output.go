@@ -54,10 +54,11 @@ type stdoutReporter struct {
 	startedAt     time.Time
 	printedPhases map[string]bool
 	styles        cliStyles
+	redactReport  bool
 }
 
-func newStdoutReporter(out io.Writer, verbosity Verbosity, color bool) *stdoutReporter {
-	return &stdoutReporter{out: out, verbosity: verbosity, startedAt: time.Now(), printedPhases: map[string]bool{}, styles: newCLIStyles(color)}
+func newStdoutReporter(out io.Writer, verbosity Verbosity, color bool, redactReport bool) *stdoutReporter {
+	return &stdoutReporter{out: out, verbosity: verbosity, startedAt: time.Now(), printedPhases: map[string]bool{}, styles: newCLIStyles(color), redactReport: redactReport}
 }
 
 func (r *stdoutReporter) RunStarted(runID, target string) {
@@ -114,7 +115,7 @@ func (r *stdoutReporter) RunCompleted(summary *viewmodel.RunSummary) {
 		return
 	}
 	fprintf(r.out, "%s\n\n", r.styles.success.Render("Recon completed"))
-	fprintf(r.out, "%s", reporting.RenderTerminalReport(summary))
+	fprintf(r.out, "%s", reporting.RenderTerminalReportWithOptions(summary, reporting.RenderOptions{Redact: r.redactReport}))
 }
 
 func (r *stdoutReporter) RunFailed(runID string, err error) {

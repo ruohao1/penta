@@ -246,6 +246,36 @@ func TestReconCommandWritesMarkdownReport(t *testing.T) {
 	}
 }
 
+func TestReconCommandRedactsFinalAndMarkdownReports(t *testing.T) {
+	app := openTestApp(t)
+	cmd := newReconCommand(app)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	reportPath := filepath.Join(t.TempDir(), "report.md")
+	target := newReconHTTPServer(t) + "?token=target-secret"
+	cmd.SetArgs([]string{"--no-color", "--redact-report", "-o", reportPath, target})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute recon command: %v", err)
+	}
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	stdoutReport := out.String()
+	if idx := strings.LastIndex(stdoutReport, "Recon completed"); idx >= 0 {
+		stdoutReport = stdoutReport[idx:]
+	}
+	for name, got := range map[string]string{"stdout final report": stdoutReport, "markdown": string(data)} {
+		if strings.Contains(got, "target-secret") {
+			t.Fatalf("%s report leaked secret: %q", name, got)
+		}
+		if !strings.Contains(got, "[REDACTED]") {
+			t.Fatalf("%s report missing redaction marker: %q", name, got)
+		}
+	}
+}
+
 func TestReconCommandAttachesRunToSession(t *testing.T) {
 	app := openTestApp(t)
 	sessionID := createTestSession(t, app, "Acme", "bugbounty")

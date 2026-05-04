@@ -24,6 +24,7 @@ func newReconCommand(app *App) *cobra.Command {
 	var noColor bool
 	var outputPath string
 	var sessionID string
+	var redactReport bool
 
 	cmd := &cobra.Command{
 		Use:          "recon",
@@ -39,6 +40,7 @@ func newReconCommand(app *App) *cobra.Command {
 	cmd.Flags().BoolVar(&noColor, "no-color", false, "disable colored output")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "write markdown report to file")
 	cmd.Flags().StringVar(&sessionID, "session", "", "attach run to an explicit session")
+	cmd.Flags().BoolVar(&redactReport, "redact-report", false, "redact obvious secrets in final terminal and markdown reports")
 
 	return cmd
 }
@@ -64,7 +66,8 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 	}
 	sinks := commandSinks(cmd, app)
 	verbosity := verbosityFromFlags(flagBool(cmd, "quiet"), flagCount(cmd, "verbose"))
-	reporter := newStdoutReporter(sinks.Out, verbosity, !flagBool(cmd, "no-color"))
+	redactReport := flagBool(cmd, "redact-report")
+	reporter := newStdoutReporter(sinks.Out, verbosity, !flagBool(cmd, "no-color"), redactReport)
 	reporter.RunStarted(runID, target)
 	if session != nil {
 		reporter.SessionSelected(*session)
@@ -115,7 +118,7 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 	}
 	reporter.RunCompleted(summary)
 	if outputPath != "" {
-		if err := writeMarkdownReport(outputPath, summary); err != nil {
+		if err := writeMarkdownReport(outputPath, summary, reporting.RenderOptions{Redact: redactReport}); err != nil {
 			return err
 		}
 		if verbosity != VerbosityQuiet {
@@ -137,7 +140,7 @@ func validateReportOutputPath(path string) error {
 	return fmt.Errorf("check report path %s: %w", path, err)
 }
 
-func writeMarkdownReport(path string, summary *viewmodel.RunSummary) error {
+func writeMarkdownReport(path string, summary *viewmodel.RunSummary, options reporting.RenderOptions) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		if os.IsExist(err) {
@@ -146,7 +149,7 @@ func writeMarkdownReport(path string, summary *viewmodel.RunSummary) error {
 		return fmt.Errorf("write report %s: %w", path, err)
 	}
 	defer func() { _ = file.Close() }()
-	if _, err := file.WriteString(reporting.RenderMarkdownReport(summary)); err != nil {
+	if _, err := file.WriteString(reporting.RenderMarkdownReportWithOptions(summary, options)); err != nil {
 		return fmt.Errorf("write report %s: %w", path, err)
 	}
 	return nil

@@ -87,6 +87,25 @@ func TestRenderReportsIncludeSessionMetadata(t *testing.T) {
 	}
 }
 
+func TestRenderReportsCanRedactEvidenceStrings(t *testing.T) {
+	summary := sampleSummary()
+	summary.Evidence = []viewmodel.EvidenceSummary{{ID: "evidence_secret", Kind: "http_response", Label: "https://example.com?token=label-secret 200", URL: "https://example.com?token=url-secret", Details: []string{"authorization: Bearer detail-secret"}}}
+
+	terminal := RenderTerminalReportWithOptions(summary, RenderOptions{Redact: true})
+	markdown := RenderMarkdownReportWithOptions(summary, RenderOptions{Redact: true})
+	for _, got := range []string{terminal, markdown} {
+		if strings.Contains(got, "label-secret") || strings.Contains(got, "url-secret") || strings.Contains(got, "detail-secret") {
+			t.Fatalf("redacted report leaked secret: %q", got)
+		}
+		if !strings.Contains(got, "[REDACTED]") {
+			t.Fatalf("redacted report missing marker: %q", got)
+		}
+	}
+	if strings.Contains(summary.Evidence[0].Label, "[REDACTED]") || strings.Contains(summary.Evidence[0].Details[0], "[REDACTED]") {
+		t.Fatalf("redaction mutated summary: %+v", summary.Evidence[0])
+	}
+}
+
 func sampleSummary() *viewmodel.RunSummary {
 	return &viewmodel.RunSummary{
 		RunID:  "run_1",

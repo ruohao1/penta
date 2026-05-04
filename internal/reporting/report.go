@@ -6,11 +6,21 @@ import (
 	"strings"
 
 	"github.com/ruohao1/penta/internal/actions"
+	"github.com/ruohao1/penta/internal/output"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/viewmodel"
 )
 
+type RenderOptions struct {
+	Redact bool
+}
+
 func RenderTerminalReport(summary *viewmodel.RunSummary) string {
+	return RenderTerminalReportWithOptions(summary, RenderOptions{})
+}
+
+func RenderTerminalReportWithOptions(summary *viewmodel.RunSummary, options RenderOptions) string {
+	summary = renderSummary(summary, options)
 	var b strings.Builder
 	fprintf(&b, "Run        %s\n", summary.RunID)
 	fprintf(&b, "Status     %s\n", summary.Status)
@@ -28,6 +38,11 @@ func RenderTerminalReport(summary *viewmodel.RunSummary) string {
 }
 
 func RenderMarkdownReport(summary *viewmodel.RunSummary) string {
+	return RenderMarkdownReportWithOptions(summary, RenderOptions{})
+}
+
+func RenderMarkdownReportWithOptions(summary *viewmodel.RunSummary, options RenderOptions) string {
+	summary = renderSummary(summary, options)
 	var b strings.Builder
 	b.WriteString("# Penta Recon Report\n\n")
 	b.WriteString("## Summary\n\n")
@@ -59,6 +74,28 @@ func RenderMarkdownReport(summary *viewmodel.RunSummary) string {
 	}
 	renderMarkdownEvidenceSections(&b, summary)
 	return b.String()
+}
+
+func renderSummary(summary *viewmodel.RunSummary, options RenderOptions) *viewmodel.RunSummary {
+	if !options.Redact || summary == nil {
+		return summary
+	}
+	redacted := *summary
+	redacted.Evidence = make([]viewmodel.EvidenceSummary, len(summary.Evidence))
+	for i, evidence := range summary.Evidence {
+		redacted.Evidence[i] = redactEvidenceSummary(evidence)
+	}
+	return &redacted
+}
+
+func redactEvidenceSummary(evidence viewmodel.EvidenceSummary) viewmodel.EvidenceSummary {
+	evidence.Label = output.RedactString(evidence.Label)
+	evidence.URL = output.RedactString(evidence.URL)
+	evidence.Details = append([]string(nil), evidence.Details...)
+	for i, detail := range evidence.Details {
+		evidence.Details[i] = output.RedactString(detail)
+	}
+	return evidence
 }
 
 func FormatScopeCounts(rules []sqlite.ScopeRule) string {
