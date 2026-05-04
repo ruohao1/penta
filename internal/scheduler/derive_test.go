@@ -30,6 +30,11 @@ func TestDeriveFromTargetEvidenceCreatesProbeHTTPForURL(t *testing.T) {
 	assertProbeHTTPCandidate(t, candidates, "https://example.com/login", targets.TypeURL)
 }
 
+func TestDeriveFromTargetEvidenceCreatesProbeHTTPForService(t *testing.T) {
+	candidates := deriveTargetCandidates(t, model.TargetRef{Value: "127.0.0.1:8000", Type: targets.TypeService})
+	assertProbeHTTPCandidate(t, candidates, "127.0.0.1:8000", targets.TypeService)
+}
+
 func TestDeriveFromTargetEvidenceIgnoresCIDR(t *testing.T) {
 	candidates := deriveTargetCandidates(t, model.TargetRef{Value: "10.0.0.0/24", Type: targets.TypeCIDR})
 	if len(candidates) != 0 {
@@ -75,7 +80,7 @@ func TestDeriveFromServiceEvidenceCreatesFetchRoot(t *testing.T) {
 	if input != service {
 		t.Fatalf("unexpected fetch root input: %+v", input)
 	}
-	assertCandidateTarget(t, candidate, "https://example.com:443", targets.TypeService)
+	assertCandidateTarget(t, candidate, "https://example.com:443", targets.TypeURL)
 }
 
 func TestDeriveFromEvidenceRejectsInvalidTargetJSON(t *testing.T) {

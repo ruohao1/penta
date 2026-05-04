@@ -67,6 +67,19 @@ func TestParseService(t *testing.T) {
 	}
 }
 
+func TestParseLocalhostService(t *testing.T) {
+	target, err := Parse("localhost:8000")
+	if err != nil {
+		t.Fatalf("parse localhost service: %v", err)
+	}
+	if got := target.String(); got != "localhost:8000" {
+		t.Fatalf("unexpected target value: got %q want %q", got, "localhost:8000")
+	}
+	if got := target.Type(); got != TypeService {
+		t.Fatalf("unexpected target type: got %q want %q", got, TypeService)
+	}
+}
+
 func TestParseIPRange(t *testing.T) {
 	target, err := Parse("1-255.1-255.1-255.1-255")
 	if err != nil {

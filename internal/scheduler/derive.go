@@ -46,7 +46,7 @@ func DeriveFromEvidence(evidence sqlite.Evidence) ([]CandidateTask, error) {
 			},
 			probeCandidate,
 		}, nil
-	case targets.TypeIP, targets.TypeURL:
+	case targets.TypeIP, targets.TypeService, targets.TypeURL:
 		candidate, err := newProbeHTTPCandidate(evidence.ID, target)
 		if err != nil {
 			return nil, err
@@ -98,5 +98,5 @@ func serviceTargetRef(service model.Service) *model.TargetRef {
 	if service.Port > 0 {
 		value = fmt.Sprintf("%s:%d", value, service.Port)
 	}
-	return &model.TargetRef{Value: value, Type: targets.TypeService}
+	return &model.TargetRef{Value: value, Type: targets.TypeURL}
 }

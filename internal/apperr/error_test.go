@@ -26,3 +26,17 @@ func TestErrorWrapsCause(t *testing.T) {
 		t.Fatalf("expected wrapped cause")
 	}
 }
+
+func TestReportedErrorMarksAlreadyPrintedErrors(t *testing.T) {
+	cause := errors.New("already printed")
+	err := Reported(cause)
+	if !IsReported(err) {
+		t.Fatal("expected reported error")
+	}
+	if !errors.Is(err, cause) {
+		t.Fatal("expected reported error to wrap cause")
+	}
+	if IsReported(cause) {
+		t.Fatal("plain cause should not be reported")
+	}
+}

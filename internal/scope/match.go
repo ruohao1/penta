@@ -79,11 +79,8 @@ func matchesWildcardDomain(value string, target targets.Target) bool {
 }
 
 func matchesIPRule(value string, target targets.Target) bool {
-	if target.Type() != targets.TypeIP {
-		return false
-	}
 	ruleIP := net.ParseIP(value)
-	targetIP := net.ParseIP(target.String())
+	targetIP := targetIP(target)
 	return ruleIP != nil && targetIP != nil && ruleIP.Equal(targetIP)
 }
 
@@ -92,8 +89,8 @@ func matchesCIDRRule(value string, target targets.Target) bool {
 	if err != nil {
 		return false
 	}
-	if target.Type() == targets.TypeIP {
-		ip := net.ParseIP(target.String())
+	if target.Type() == targets.TypeIP || target.Type() == targets.TypeService {
+		ip := targetIP(target)
 		return ip != nil && network.Contains(ip)
 	}
 	if target.Type() == targets.TypeCIDR {
@@ -101,6 +98,25 @@ func matchesCIDRRule(value string, target targets.Target) bool {
 		return err == nil && network.Contains(ip)
 	}
 	return false
+}
+
+func targetIP(target targets.Target) net.IP {
+	switch typed := target.(type) {
+	case *targets.IP:
+		return net.ParseIP(typed.String())
+	case *targets.Service:
+		if strings.EqualFold(typed.Host, "localhost") {
+			return net.ParseIP("127.0.0.1")
+		}
+		return net.ParseIP(typed.Host)
+	case *targets.URL:
+		if strings.EqualFold(typed.Host, "localhost") {
+			return net.ParseIP("127.0.0.1")
+		}
+		return net.ParseIP(typed.Host)
+	default:
+		return nil
+	}
 }
 
 func targetHost(target targets.Target) (string, bool) {

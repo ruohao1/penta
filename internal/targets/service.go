@@ -37,9 +37,11 @@ func parseService(s string) (*Service, error) {
 	if portNum < 1 || portNum > 65535 {
 		return nil, fmt.Errorf("invalid service: %s", s)
 	}
-	if _, err := parseIP(host); err != nil {
-		if _, err := parseDomain(host); err != nil {
-			return nil, fmt.Errorf("invalid service: %s", s)
+	if !strings.EqualFold(host, "localhost") {
+		if _, err := parseIP(host); err != nil {
+			if _, err := parseDomain(host); err != nil {
+				return nil, fmt.Errorf("invalid service: %s", s)
+			}
 		}
 	}
 	return &Service{Host: host, Port: strconv.Itoa(portNum)}, nil

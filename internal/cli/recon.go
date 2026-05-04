@@ -90,7 +90,7 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 		}
 		_ = sink.Append(cmd.Context(), events.Event{RunID: runID, EventType: events.EventRunFailed, EntityKind: events.EntityRun, EntityID: runID, PayloadJSON: mustPayloadJSON(map[string]string{"error": err.Error()}), CreatedAt: time.Now()})
 		reporter.RunFailed(runID, err)
-		return err
+		return apperr.Reported(err)
 	}
 
 	if err := executor.RunUntilIdle(cmd.Context()); err != nil {
@@ -99,7 +99,7 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 		}
 		_ = sink.Append(cmd.Context(), events.Event{RunID: runID, EventType: events.EventRunFailed, EntityKind: events.EntityRun, EntityID: runID, PayloadJSON: mustPayloadJSON(map[string]string{"error": err.Error()}), CreatedAt: time.Now()})
 		reporter.RunFailed(runID, err)
-		return err
+		return apperr.Reported(err)
 	}
 	if err := app.DB.UpdateRunStatus(cmd.Context(), runID, actions.RunStatusCompleted); err != nil {
 		return err

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -115,6 +116,15 @@ func servicePartsFromURL(t *testing.T, rawURL string) (host, scheme string, port
 		t.Fatalf("parse port: %v", err)
 	}
 	return parsed.Hostname(), parsed.Scheme, port
+}
+
+func serviceTargetFromURL(t *testing.T, rawURL string) string {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse url: %v", err)
+	}
+	return net.JoinHostPort(parsed.Hostname(), parsed.Port())
 }
 
 func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
@@ -319,6 +329,49 @@ func TestReconCommandBlocksOutOfScopeSessionTargetBeforeRunCreation(t *testing.T
 	assertAppErrorKind(t, err, apperr.KindForbidden)
 	if got := queryCount(t, app, "runs"); got != 0 {
 		t.Fatalf("out-of-scope target created runs: got %d want 0", got)
+	}
+}
+
+func TestValidateReconSessionAllowsScopedLoopbackService(t *testing.T) {
+	app := openTestApp(t)
+	sessionID := createTestSession(t, app, "Local", "lab")
+	createTestScopeRule(t, app, sessionID, "scope_include", "include", "ip", "127.0.0.1")
+	cmd := newReconCommand(app)
+	cmd.SetContext(context.Background())
+	if err := cmd.Flags().Set("session", sessionID); err != nil {
+		t.Fatalf("set session flag: %v", err)
+	}
+
+	session, err := validateReconSession(cmd, app, "localhost:8000")
+	if err != nil {
+		t.Fatalf("validate recon session: %v", err)
+	}
+	if session == nil || session.ID != sessionID {
+		t.Fatalf("unexpected session: %+v", session)
+	}
+}
+
+func TestReconCommandHandlesScopedServiceTarget(t *testing.T) {
+	app := openTestApp(t)
+	sessionID := createTestSession(t, app, "Local", "lab")
+	serverURL := newReconHTTPServer(t)
+	host, _, _ := servicePartsFromURL(t, serverURL)
+	target := serviceTargetFromURL(t, serverURL)
+	createTestScopeRule(t, app, sessionID, "scope_include", "include", "ip", host)
+	cmd := newReconCommand(app)
+	cmd.SetArgs([]string{"--session", sessionID, target, "--no-color"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute recon command: %v", err)
+	}
+	if got := queryCount(t, app, "runs"); got != 1 {
+		t.Fatalf("unexpected runs count: got %d want 1", got)
+	}
+	if got := queryCount(t, app, "tasks"); got != 3 {
+		t.Fatalf("unexpected tasks count: got %d want 3", got)
+	}
+	if got := queryCount(t, app, "evidence"); got != 3 {
+		t.Fatalf("unexpected evidence count: got %d want 3", got)
 	}
 }
 
@@ -834,6 +887,28 @@ func TestExecuteTaskHandlesProbeHTTPURL(t *testing.T) {
 	}
 
 	assertServiceEvidence(t, app, "example.com", "https", 8443)
+}
+
+func TestExecuteTaskHandlesProbeHTTPService(t *testing.T) {
+	app := openTestApp(t)
+	run := sqlite.Run{ID: "run_probe_service", Mode: "recon", Status: actions.RunStatusRunning, CreatedAt: time.Now()}
+	if err := app.DB.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	inputJSON, err := json.Marshal(probehttp.Input{Value: "127.0.0.1:8000", Type: targets.TypeService})
+	if err != nil {
+		t.Fatalf("marshal probe input: %v", err)
+	}
+	task := sqlite.Task{ID: "task_probe_service", RunID: run.ID, ActionType: actions.ActionProbeHTTP, InputJSON: string(inputJSON), Status: actions.TaskStatusPending, CreatedAt: time.Now()}
+	if err := app.DB.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	if err := runTask(t, app, task.ID); err != nil {
+		t.Fatalf("execute task: %v", err)
+	}
+
+	assertServiceEvidence(t, app, "127.0.0.1", "http", 8000)
 }
 
 func TestExecuteTaskRejectsProbeHTTPCIDR(t *testing.T) {

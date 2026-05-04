@@ -41,6 +41,21 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 		service.Host = input.Value
 		service.Scheme = "https"
 		service.Port = 443
+	case targets.TypeService:
+		parsed, err := targets.Parse(input.Value)
+		if err != nil {
+			return err
+		}
+		serviceTarget, ok := parsed.(*targets.Service)
+		if !ok {
+			return fmt.Errorf("expected service target")
+		}
+		service.Host = serviceTarget.Host
+		service.Port, err = defaultPort("http", serviceTarget.Port)
+		if err != nil {
+			return err
+		}
+		service.Scheme = schemeForServicePort(service.Port)
 	default:
 		return fmt.Errorf("unsupported target type: %s", input.Type)
 	}
@@ -77,6 +92,13 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 		PayloadJSON: mustPayloadJSON(events.EvidenceCreatedPayload{Kind: evidence.Kind, Label: label}),
 		CreatedAt:   time.Now(),
 	})
+}
+
+func schemeForServicePort(port int) string {
+	if port == 443 {
+		return "https"
+	}
+	return "http"
 }
 
 func defaultPort(scheme, port string) (int, error) {

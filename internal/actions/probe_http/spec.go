@@ -17,6 +17,7 @@ var Spec = actions.ActionSpec{
 			TargetTypes: []targets.Type{
 				targets.TypeDomain,
 				targets.TypeIP,
+				targets.TypeService,
 				targets.TypeURL,
 			},
 		},

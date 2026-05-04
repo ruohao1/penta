@@ -70,6 +70,18 @@ func TestEvaluateTargetMatchesIPAndCIDRRules(t *testing.T) {
 	}
 }
 
+func TestEvaluateTargetMatchesServiceHostAgainstIPRule(t *testing.T) {
+	if decision := evaluate(t, "127.0.0.1:8000", []sqlite.ScopeRule{includeRule("rule_1", sqlite.ScopeTargetIP, "127.0.0.1")}); !decision.Allowed {
+		t.Fatalf("expected service with matching IP host allowed: %+v", decision)
+	}
+	if decision := evaluate(t, "localhost:8000", []sqlite.ScopeRule{includeRule("rule_2", sqlite.ScopeTargetIP, "127.0.0.1")}); !decision.Allowed {
+		t.Fatalf("expected localhost service to match loopback IP rule: %+v", decision)
+	}
+	if decision := evaluate(t, "http://127.0.0.1:8000", []sqlite.ScopeRule{includeRule("rule_3", sqlite.ScopeTargetIP, "127.0.0.1")}); !decision.Allowed {
+		t.Fatalf("expected URL with matching IP host allowed: %+v", decision)
+	}
+}
+
 func TestEvaluateTargetMatchesExactURLAndServiceRules(t *testing.T) {
 	if decision := evaluate(t, "https://example.com/path", []sqlite.ScopeRule{includeRule("rule_1", sqlite.ScopeTargetURL, "https://example.com/path/")}); !decision.Allowed {
 		t.Fatalf("expected exact URL allowed: %+v", decision)

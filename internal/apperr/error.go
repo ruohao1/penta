@@ -1,6 +1,33 @@
 package apperr
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+type reportedError struct {
+	cause error
+}
+
+func Reported(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	return reportedError{cause: cause}
+}
+
+func (e reportedError) Error() string {
+	return e.cause.Error()
+}
+
+func (e reportedError) Unwrap() error {
+	return e.cause
+}
+
+func IsReported(err error) bool {
+	var reported reportedError
+	return errors.As(err, &reported)
+}
 
 type Kind string
 
