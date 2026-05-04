@@ -11,6 +11,8 @@ type RunSummary struct {
 	RunID          string
 	Status         actions.RunStatus
 	DBPath         string
+	Session        *sqlite.Session
+	ScopeRules     []sqlite.ScopeRule
 	TaskCounts     map[actions.TaskStatus]int
 	EvidenceCounts map[string]int
 	Evidence       []EvidenceSummary
@@ -45,6 +47,18 @@ func BuildRunSummary(ctx context.Context, db *sqlite.DB, runID, dbPath string) (
 		TaskCounts:     map[actions.TaskStatus]int{},
 		EvidenceCounts: map[string]int{},
 		Evidence:       make([]EvidenceSummary, 0, len(evidenceRows)),
+	}
+	if run.SessionID != "" {
+		session, err := db.GetSession(ctx, run.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		summary.Session = session
+		rules, err := db.ListScopeRulesBySession(ctx, run.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		summary.ScopeRules = rules
 	}
 	for _, task := range tasks {
 		summary.TaskCounts[task.Status]++

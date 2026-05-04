@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ruohao1/penta/internal/actions"
+	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/viewmodel"
 )
 
@@ -13,6 +14,10 @@ func RenderTerminalReport(summary *viewmodel.RunSummary) string {
 	var b strings.Builder
 	fprintf(&b, "Run        %s\n", summary.RunID)
 	fprintf(&b, "Status     %s\n", summary.Status)
+	if summary.Session != nil {
+		fprintf(&b, "Session    %s (%s, %s)\n", summary.Session.ID, summary.Session.Name, summary.Session.Kind)
+		fprintf(&b, "Scope      %s\n", FormatScopeCounts(summary.ScopeRules))
+	}
 	fprintf(&b, "Tasks      %s\n", FormatTaskCounts(summary.TaskCounts))
 	fprintf(&b, "Evidence   %s\n", FormatEvidenceCounts(summary.EvidenceCounts))
 	if summary.DBPath != "" {
@@ -28,6 +33,20 @@ func RenderMarkdownReport(summary *viewmodel.RunSummary) string {
 	b.WriteString("## Summary\n\n")
 	fprintf(&b, "- Run: `%s`\n", summary.RunID)
 	fprintf(&b, "- Status: `%s`\n", summary.Status)
+	if summary.Session != nil {
+		b.WriteString("\n## Session\n\n")
+		fprintf(&b, "- ID: `%s`\n", summary.Session.ID)
+		fprintf(&b, "- Name: %s\n", summary.Session.Name)
+		fprintf(&b, "- Kind: `%s`\n", summary.Session.Kind)
+		fprintf(&b, "- Status: `%s`\n", summary.Session.Status)
+		if len(summary.ScopeRules) > 0 {
+			b.WriteString("\n## Scope\n\n")
+			for _, rule := range summary.ScopeRules {
+				fprintf(&b, "- %s %s `%s` (%s)\n", rule.Effect, rule.TargetType, rule.Value, rule.ID)
+			}
+		}
+		b.WriteString("\n## Run Summary\n\n")
+	}
 	fprintf(&b, "- Tasks: %s\n", FormatTaskCounts(summary.TaskCounts))
 	fprintf(&b, "- Evidence: %s\n", FormatEvidenceCounts(summary.EvidenceCounts))
 	if summary.DBPath != "" {
@@ -40,6 +59,20 @@ func RenderMarkdownReport(summary *viewmodel.RunSummary) string {
 	}
 	renderMarkdownEvidenceSections(&b, summary)
 	return b.String()
+}
+
+func FormatScopeCounts(rules []sqlite.ScopeRule) string {
+	includeCount := 0
+	excludeCount := 0
+	for _, rule := range rules {
+		switch rule.Effect {
+		case sqlite.ScopeEffectInclude:
+			includeCount++
+		case sqlite.ScopeEffectExclude:
+			excludeCount++
+		}
+	}
+	return fmt.Sprintf("%d include / %d exclude", includeCount, excludeCount)
 }
 
 func renderTerminalEvidenceSections(b *strings.Builder, summary *viewmodel.RunSummary) {

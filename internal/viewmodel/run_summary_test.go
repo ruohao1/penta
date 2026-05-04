@@ -64,6 +64,34 @@ func TestBuildRunSummaryCountsTasksAndEvidence(t *testing.T) {
 	}
 }
 
+func TestBuildRunSummaryIncludesSessionMetadata(t *testing.T) {
+	db := openViewModelTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	session := sqlite.Session{ID: "session_1", Name: "Acme", Kind: sqlite.SessionKindBugBounty, Status: sqlite.SessionStatusActive, CreatedAt: now, UpdatedAt: now}
+	if err := db.CreateSession(ctx, session); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := db.CreateScopeRule(ctx, sqlite.ScopeRule{ID: "scope_1", SessionID: session.ID, Effect: sqlite.ScopeEffectInclude, TargetType: sqlite.ScopeTargetDomain, Value: "*.example.com", CreatedAt: now}); err != nil {
+		t.Fatalf("create scope rule: %v", err)
+	}
+	run := sqlite.Run{ID: "run_1", SessionID: session.ID, Mode: "recon", Status: actions.RunStatusCompleted, CreatedAt: now}
+	if err := db.CreateRun(ctx, run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	summary, err := BuildRunSummary(ctx, db, run.ID, "/tmp/penta.db")
+	if err != nil {
+		t.Fatalf("build summary: %v", err)
+	}
+	if summary.Session == nil || summary.Session.ID != session.ID || summary.Session.Name != session.Name {
+		t.Fatalf("summary missing session: %+v", summary.Session)
+	}
+	if len(summary.ScopeRules) != 1 || summary.ScopeRules[0].ID != "scope_1" {
+		t.Fatalf("summary missing scope rules: %+v", summary.ScopeRules)
+	}
+}
+
 func openViewModelTestDB(t *testing.T) *sqlite.DB {
 	t.Helper()
 

@@ -3,8 +3,10 @@ package reporting
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
+	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/viewmodel"
 )
 
@@ -58,6 +60,29 @@ func TestRenderMarkdownReportIncludesSummaryAndEvidence(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("markdown report missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestRenderReportsIncludeSessionMetadata(t *testing.T) {
+	summary := sampleSummary()
+	summary.Session = &sqlite.Session{ID: "session_1", Name: "Acme", Kind: sqlite.SessionKindBugBounty, Status: sqlite.SessionStatusActive, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	summary.ScopeRules = []sqlite.ScopeRule{
+		{ID: "scope_1", Effect: sqlite.ScopeEffectInclude, TargetType: sqlite.ScopeTargetDomain, Value: "*.example.com"},
+		{ID: "scope_2", Effect: sqlite.ScopeEffectExclude, TargetType: sqlite.ScopeTargetDomain, Value: "admin.example.com"},
+	}
+
+	terminal := RenderTerminalReport(summary)
+	for _, want := range []string{"Session    session_1 (Acme, bugbounty)", "Scope      1 include / 1 exclude"} {
+		if !strings.Contains(terminal, want) {
+			t.Fatalf("terminal report missing %q in %q", want, terminal)
+		}
+	}
+
+	markdown := RenderMarkdownReport(summary)
+	for _, want := range []string{"## Session", "- ID: `session_1`", "- Name: Acme", "## Scope", "- include domain `*.example.com` (scope_1)", "## Run Summary"} {
+		if !strings.Contains(markdown, want) {
+			t.Fatalf("markdown report missing %q in %q", want, markdown)
 		}
 	}
 }
