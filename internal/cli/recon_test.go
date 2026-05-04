@@ -167,7 +167,7 @@ func TestReconCommandWritesMarkdownReport(t *testing.T) {
 		t.Fatalf("read report: %v", err)
 	}
 	got := string(data)
-	for _, want := range []string{"# Penta Recon Report", "## Summary", "## Evidence", "- **target**: ip 1.2.3.4", "- **service**: https 1.2.3.4:443"} {
+	for _, want := range []string{"# Penta Recon Report", "## Summary", "## Targets", "## Services", "- ip 1.2.3.4", "- [https://1.2.3.4](https://1.2.3.4)"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("report missing %q in %q", want, got)
 		}

@@ -18,12 +18,7 @@ func RenderTerminalReport(summary *viewmodel.RunSummary) string {
 	if summary.DBPath != "" {
 		fprintf(&b, "Database   %s\n", summary.DBPath)
 	}
-	if len(summary.Evidence) > 0 {
-		b.WriteString("\nFindings\n")
-		for _, evidence := range summary.Evidence {
-			fprintf(&b, "- %s: %s\n", evidence.Kind, evidence.Label)
-		}
-	}
+	renderTerminalEvidenceSections(&b, summary)
 	return b.String()
 }
 
@@ -38,15 +33,106 @@ func RenderMarkdownReport(summary *viewmodel.RunSummary) string {
 	if summary.DBPath != "" {
 		fprintf(&b, "- Database: `%s`\n", summary.DBPath)
 	}
-	b.WriteString("\n## Evidence\n\n")
 	if len(summary.Evidence) == 0 {
+		b.WriteString("\n## Evidence\n\n")
 		b.WriteString("No evidence recorded.\n")
 		return b.String()
 	}
-	for _, evidence := range summary.Evidence {
-		fprintf(&b, "- **%s**: %s\n", evidence.Kind, evidence.Label)
-	}
+	renderMarkdownEvidenceSections(&b, summary)
 	return b.String()
+}
+
+func renderTerminalEvidenceSections(b *strings.Builder, summary *viewmodel.RunSummary) {
+	groups := evidenceByKind(summary)
+	for _, section := range evidenceSections() {
+		evidenceRows := groups[section.kind]
+		if len(evidenceRows) == 0 {
+			continue
+		}
+		fprintf(b, "\n%s\n", section.title)
+		for _, evidence := range evidenceRows {
+			fprintf(b, "- %s\n", evidence.Label)
+			for _, detail := range evidence.Details {
+				fprintf(b, "  %s\n", detail)
+			}
+		}
+	}
+	if other := otherEvidence(summary); len(other) > 0 {
+		b.WriteString("\nOther Evidence\n")
+		for _, evidence := range other {
+			fprintf(b, "- %s: %s\n", evidence.Kind, evidence.Label)
+			for _, detail := range evidence.Details {
+				fprintf(b, "  %s\n", detail)
+			}
+		}
+	}
+}
+
+func renderMarkdownEvidenceSections(b *strings.Builder, summary *viewmodel.RunSummary) {
+	groups := evidenceByKind(summary)
+	for _, section := range evidenceSections() {
+		evidenceRows := groups[section.kind]
+		if len(evidenceRows) == 0 {
+			continue
+		}
+		fprintf(b, "\n## %s\n\n", section.title)
+		for _, evidence := range evidenceRows {
+			renderMarkdownEvidenceBullet(b, evidence)
+		}
+	}
+	if other := otherEvidence(summary); len(other) > 0 {
+		b.WriteString("\n## Other Evidence\n\n")
+		for _, evidence := range other {
+			renderMarkdownEvidenceBullet(b, evidence)
+		}
+	}
+}
+
+func renderMarkdownEvidenceBullet(b *strings.Builder, evidence viewmodel.EvidenceSummary) {
+	label := evidence.Label
+	if evidence.URL != "" {
+		label = fmt.Sprintf("[%s](%s)", evidence.Label, evidence.URL)
+	}
+	fprintf(b, "- %s\n", label)
+	for _, detail := range evidence.Details {
+		fprintf(b, "  - %s\n", detail)
+	}
+}
+
+type evidenceSection struct {
+	kind  string
+	title string
+}
+
+func evidenceSections() []evidenceSection {
+	return []evidenceSection{
+		{kind: "target", title: "Targets"},
+		{kind: "dns_record", title: "DNS Records"},
+		{kind: "service", title: "Services"},
+		{kind: "http_response", title: "HTTP Responses"},
+	}
+}
+
+func evidenceByKind(summary *viewmodel.RunSummary) map[string][]viewmodel.EvidenceSummary {
+	groups := map[string][]viewmodel.EvidenceSummary{}
+	for _, evidence := range summary.Evidence {
+		groups[evidence.Kind] = append(groups[evidence.Kind], evidence)
+	}
+	return groups
+}
+
+func otherEvidence(summary *viewmodel.RunSummary) []viewmodel.EvidenceSummary {
+	known := map[string]bool{}
+	for _, section := range evidenceSections() {
+		known[section.kind] = true
+	}
+	other := make([]viewmodel.EvidenceSummary, 0)
+	for _, evidence := range summary.Evidence {
+		if !known[evidence.Kind] {
+			other = append(other, evidence)
+		}
+	}
+	return other
 }
 
 func FormatTaskCounts(counts map[actions.TaskStatus]int) string {

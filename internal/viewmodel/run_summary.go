@@ -17,9 +17,11 @@ type RunSummary struct {
 }
 
 type EvidenceSummary struct {
-	ID    string
-	Kind  string
-	Label string
+	ID      string
+	Kind    string
+	Label   string
+	URL     string
+	Details []string
 }
 
 func BuildRunSummary(ctx context.Context, db *sqlite.DB, runID, dbPath string) (*RunSummary, error) {
@@ -49,11 +51,11 @@ func BuildRunSummary(ctx context.Context, db *sqlite.DB, runID, dbPath string) (
 	}
 	for _, evidence := range evidenceRows {
 		summary.EvidenceCounts[evidence.Kind]++
-		label, err := EvidenceLabel(evidence)
+		evidenceSummary, err := EvidenceSummaryFor(evidence)
 		if err != nil {
 			return nil, err
 		}
-		summary.Evidence = append(summary.Evidence, EvidenceSummary{ID: evidence.ID, Kind: evidence.Kind, Label: label})
+		summary.Evidence = append(summary.Evidence, evidenceSummary)
 	}
 	return summary, nil
 }

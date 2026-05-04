@@ -56,8 +56,11 @@ func TestBuildRunSummaryCountsTasksAndEvidence(t *testing.T) {
 	if len(summary.Evidence) != 3 {
 		t.Fatalf("unexpected evidence summary count: got %d want 3", len(summary.Evidence))
 	}
-	if summary.Evidence[0].Label != "domain example.com" || summary.Evidence[1].Label != "https example.com:443" {
+	if summary.Evidence[0].Label != "domain example.com" || summary.Evidence[1].Label != "https://example.com" {
 		t.Fatalf("unexpected evidence summaries: %+v", summary.Evidence)
+	}
+	if summary.Evidence[1].URL != "https://example.com" {
+		t.Fatalf("unexpected service URL: %+v", summary.Evidence[1])
 	}
 }
 
