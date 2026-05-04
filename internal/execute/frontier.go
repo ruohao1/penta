@@ -28,11 +28,11 @@ func (f Frontier) EnqueueCandidate(ctx context.Context, run *sqlite.Run, rules [
 	}
 	evaluation := policy.Evaluate(action.Spec)
 	if evaluation.Decision != policy.DecisionAllowed {
-		return nil
+		return f.blockCandidate(ctx, run.ID, candidate, "policy", evaluation.Reason)
 	}
 	scopeDecision := evaluateCandidateSessionScope(candidate, run.SessionID, rules)
 	if !scopeDecision.Allowed {
-		return f.appendEvent(ctx, events.Event{RunID: run.ID, EventType: events.EventCandidateBlocked, EntityKind: events.EntityRun, EntityID: run.ID, PayloadJSON: mustPayloadJSON(events.CandidateBlockedPayload{ActionType: candidate.ActionType, Reason: scopeDecision.Reason, Source: "session_scope", InputJSON: candidate.InputJSON}), CreatedAt: time.Now()})
+		return f.blockCandidate(ctx, run.ID, candidate, "session_scope", scopeDecision.Reason)
 	}
 	exists, err := f.DB.TaskExistsByRunActionInput(ctx, run.ID, candidate.ActionType, candidate.InputJSON)
 	if err != nil {
@@ -42,6 +42,10 @@ func (f Frontier) EnqueueCandidate(ctx context.Context, run *sqlite.Run, rules [
 		return nil
 	}
 	return f.enqueueTask(ctx, run.ID, candidate.ActionType, candidate.InputJSON)
+}
+
+func (f Frontier) blockCandidate(ctx context.Context, runID string, candidate scheduler.CandidateTask, source, reason string) error {
+	return f.appendEvent(ctx, events.Event{RunID: runID, EventType: events.EventCandidateBlocked, EntityKind: events.EntityRun, EntityID: runID, PayloadJSON: mustPayloadJSON(events.CandidateBlockedPayload{ActionType: candidate.ActionType, Reason: reason, Source: source, InputJSON: candidate.InputJSON}), CreatedAt: time.Now()})
 }
 
 func (f Frontier) registry() Registry {
