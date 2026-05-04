@@ -157,7 +157,11 @@ func (e *Executor) enqueueFollowOns(ctx context.Context, task *sqlite.Task) erro
 			if evaluation.Decision != policy.DecisionAllowed {
 				continue
 			}
-			if !candidateAllowedBySessionScope(candidate, run.SessionID, scopeRules) {
+			scopeDecision := evaluateCandidateSessionScope(candidate, run.SessionID, scopeRules)
+			if !scopeDecision.Allowed {
+				if err := e.appendEvent(ctx, events.Event{RunID: task.RunID, EventType: events.EventCandidateBlocked, EntityKind: events.EntityRun, EntityID: task.RunID, PayloadJSON: mustPayloadJSON(events.CandidateBlockedPayload{ActionType: candidate.ActionType, Reason: scopeDecision.Reason, Source: "session_scope", InputJSON: candidate.InputJSON}), CreatedAt: time.Now()}); err != nil {
+					return err
+				}
 				continue
 			}
 			exists, err := e.DB.TaskExistsByRunActionInput(ctx, task.RunID, candidate.ActionType, candidate.InputJSON)
@@ -175,15 +179,21 @@ func (e *Executor) enqueueFollowOns(ctx context.Context, task *sqlite.Task) erro
 	return nil
 }
 
-func candidateAllowedBySessionScope(candidate scheduler.CandidateTask, sessionID string, rules []sqlite.ScopeRule) bool {
+type candidateScopeDecision struct {
+	Allowed bool
+	Reason  string
+}
+
+func evaluateCandidateSessionScope(candidate scheduler.CandidateTask, sessionID string, rules []sqlite.ScopeRule) candidateScopeDecision {
 	if sessionID == "" {
-		return true
+		return candidateScopeDecision{Allowed: true}
 	}
 	target, ok, err := targetFromCandidate(candidate)
 	if err != nil || !ok {
-		return true
+		return candidateScopeDecision{Allowed: true}
 	}
-	return scope.EvaluateTarget(target, rules).Allowed
+	decision := scope.EvaluateTarget(target, rules)
+	return candidateScopeDecision{Allowed: decision.Allowed, Reason: decision.Reason}
 }
 
 func targetFromCandidate(candidate scheduler.CandidateTask) (targets.Target, bool, error) {

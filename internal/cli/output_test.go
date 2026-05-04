@@ -106,11 +106,23 @@ func TestStdoutReporterNormalPrintsDiscoveries(t *testing.T) {
 	}
 }
 
+func TestStdoutReporterNormalPrintsScopeBlocks(t *testing.T) {
+	var out bytes.Buffer
+	reporter := newStdoutReporter(&out, VerbosityNormal, false)
+	reporter.Event(candidateBlockedEvent(actions.ActionProbeHTTP, "target 1.2.3.4 is not included in session scope"))
+
+	got := out.String()
+	if !strings.Contains(got, "Blocked by scope: probe_http target 1.2.3.4 is not included in session scope") {
+		t.Fatalf("normal output missing scope block: %q", got)
+	}
+}
+
 func TestStdoutReporterVerbosePrintsLifecycle(t *testing.T) {
 	var out bytes.Buffer
 	reporter := newStdoutReporter(&out, VerbosityVerbose, false)
 	reporter.Event(taskStartedEvent(actions.ActionProbeHTTP))
 	reporter.Event(evidenceCreatedEvent("service"))
+	reporter.Event(candidateBlockedEvent(actions.ActionProbeHTTP, "target 1.2.3.4 is not included in session scope"))
 
 	got := out.String()
 	if !strings.Contains(got, "running  probe_http") {
@@ -118,6 +130,9 @@ func TestStdoutReporterVerbosePrintsLifecycle(t *testing.T) {
 	}
 	if !strings.Contains(got, "evidence service") {
 		t.Fatalf("verbose output missing evidence lifecycle: %q", got)
+	}
+	if !strings.Contains(got, "blocked  probe_http: target 1.2.3.4 is not included in session scope") {
+		t.Fatalf("verbose output missing blocked candidate: %q", got)
 	}
 }
 
@@ -162,6 +177,16 @@ func evidenceCreatedEventWithLabel(kind, label string) events.Event {
 		EntityKind:  events.EntityEvidence,
 		EntityID:    "evidence_1",
 		PayloadJSON: mustPayloadJSON(events.EvidenceCreatedPayload{Kind: kind, Label: label}),
+		CreatedAt:   time.Now(),
+	}
+}
+
+func candidateBlockedEvent(actionType actions.ActionType, reason string) events.Event {
+	return events.Event{
+		EventType:   events.EventCandidateBlocked,
+		EntityKind:  events.EntityRun,
+		EntityID:    "run_1",
+		PayloadJSON: mustPayloadJSON(events.CandidateBlockedPayload{ActionType: actionType, Reason: reason, Source: "session_scope", InputJSON: `{}`}),
 		CreatedAt:   time.Now(),
 	}
 }

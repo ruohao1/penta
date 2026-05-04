@@ -9,16 +9,17 @@ import (
 type EventType string
 
 const (
-	EventRunCreated      EventType = "run.created"
-	EventRunCompleted    EventType = "run.completed"
-	EventRunFailed       EventType = "run.failed"
-	EventActionRequested EventType = "action.requested"
-	EventActionResolved  EventType = "action.resolved"
-	EventTaskEnqueued    EventType = "task.enqueued"
-	EventTaskStarted     EventType = "task.started"
-	EventTaskCompleted   EventType = "task.completed"
-	EventTaskFailed      EventType = "task.failed"
-	EventEvidenceCreated EventType = "evidence.created"
+	EventRunCreated       EventType = "run.created"
+	EventRunCompleted     EventType = "run.completed"
+	EventRunFailed        EventType = "run.failed"
+	EventActionRequested  EventType = "action.requested"
+	EventActionResolved   EventType = "action.resolved"
+	EventTaskEnqueued     EventType = "task.enqueued"
+	EventTaskStarted      EventType = "task.started"
+	EventTaskCompleted    EventType = "task.completed"
+	EventTaskFailed       EventType = "task.failed"
+	EventCandidateBlocked EventType = "candidate.blocked"
+	EventEvidenceCreated  EventType = "evidence.created"
 )
 
 type EntityKind string
@@ -70,6 +71,13 @@ type TaskCompletedPayload struct {
 type TaskFailedPayload struct {
 	ActionType actions.ActionType `json:"action_type"`
 	Error      string             `json:"error"`
+}
+
+type CandidateBlockedPayload struct {
+	ActionType actions.ActionType `json:"action_type"`
+	Reason     string             `json:"reason"`
+	Source     string             `json:"source"`
+	InputJSON  string             `json:"input_json,omitempty"`
 }
 
 type EvidenceCreatedPayload struct {

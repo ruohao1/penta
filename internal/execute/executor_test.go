@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
 	seedtarget "github.com/ruohao1/penta/internal/actions/seed_target"
+	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 )
 
@@ -27,7 +29,8 @@ func TestExecutorDerivesProbeHTTPFromSeedTargetEvidence(t *testing.T) {
 		t.Fatalf("create seed task: %v", err)
 	}
 
-	executor := &Executor{DB: db, RunID: run.ID}
+	sink := &events.SQLiteSink{DB: db}
+	executor := &Executor{DB: db, RunID: run.ID, Events: sink}
 	if err := executor.RunTask(ctx, seedTask.ID); err != nil {
 		t.Fatalf("run seed task: %v", err)
 	}
@@ -74,7 +77,8 @@ func TestExecutorSkipsDuplicateDerivedTask(t *testing.T) {
 		t.Fatalf("create existing probe task: %v", err)
 	}
 
-	executor := &Executor{DB: db, RunID: run.ID}
+	sink := &events.SQLiteSink{DB: db}
+	executor := &Executor{DB: db, RunID: run.ID, Events: sink}
 	if err := executor.RunTask(ctx, seedTask.ID); err != nil {
 		t.Fatalf("run seed task: %v", err)
 	}
@@ -109,7 +113,8 @@ func TestExecutorSkipsOutOfScopeDerivedTaskForSessionRun(t *testing.T) {
 		t.Fatalf("create seed task: %v", err)
 	}
 
-	executor := &Executor{DB: db, RunID: run.ID}
+	sink := &events.SQLiteSink{DB: db}
+	executor := &Executor{DB: db, RunID: run.ID, Events: sink}
 	if err := executor.RunTask(ctx, seedTask.ID); err != nil {
 		t.Fatalf("run seed task: %v", err)
 	}
@@ -119,6 +124,18 @@ func TestExecutorSkipsOutOfScopeDerivedTaskForSessionRun(t *testing.T) {
 	}
 	if len(tasks) != 1 {
 		t.Fatalf("unexpected task count after blocked derivation: got %d want 1: %+v", len(tasks), tasks)
+	}
+	eventsRows, err := sink.ListByRunSinceSeq(ctx, run.ID, 0, 100)
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	blocked := findEventByType(t, eventsRows, events.EventCandidateBlocked)
+	var payload events.CandidateBlockedPayload
+	if err := json.Unmarshal([]byte(blocked.PayloadJSON), &payload); err != nil {
+		t.Fatalf("unmarshal blocked payload: %v", err)
+	}
+	if payload.ActionType != actions.ActionProbeHTTP || payload.Source != "session_scope" || !strings.Contains(payload.Reason, "not included in session scope") {
+		t.Fatalf("unexpected blocked payload: %+v", payload)
 	}
 }
 
@@ -143,7 +160,8 @@ func TestExecutorAllowsInScopeDerivedTaskForSessionRun(t *testing.T) {
 		t.Fatalf("create seed task: %v", err)
 	}
 
-	executor := &Executor{DB: db, RunID: run.ID}
+	sink := &events.SQLiteSink{DB: db}
+	executor := &Executor{DB: db, RunID: run.ID, Events: sink}
 	if err := executor.RunTask(ctx, seedTask.ID); err != nil {
 		t.Fatalf("run seed task: %v", err)
 	}
@@ -153,6 +171,13 @@ func TestExecutorAllowsInScopeDerivedTaskForSessionRun(t *testing.T) {
 	}
 	if len(tasks) != 2 {
 		t.Fatalf("unexpected task count after allowed derivation: got %d want 2: %+v", len(tasks), tasks)
+	}
+	eventsRows, err := sink.ListByRunSinceSeq(ctx, run.ID, 0, 100)
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	if hasEventType(eventsRows, events.EventCandidateBlocked) {
+		t.Fatalf("allowed derivation emitted blocked event: %+v", eventsRows)
 	}
 }
 
@@ -187,4 +212,24 @@ func findTaskByAction(t *testing.T, tasks []sqlite.Task, actionType actions.Acti
 	}
 	t.Fatalf("task action %q not found in %+v", actionType, tasks)
 	return sqlite.Task{}
+}
+
+func findEventByType(t *testing.T, eventsRows []events.Event, eventType events.EventType) events.Event {
+	t.Helper()
+	for _, event := range eventsRows {
+		if event.EventType == eventType {
+			return event
+		}
+	}
+	t.Fatalf("event type %q not found in %+v", eventType, eventsRows)
+	return events.Event{}
+}
+
+func hasEventType(eventsRows []events.Event, eventType events.EventType) bool {
+	for _, event := range eventsRows {
+		if event.EventType == eventType {
+			return true
+		}
+	}
+	return false
 }

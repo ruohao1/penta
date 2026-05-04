@@ -98,6 +98,13 @@ func (r *stdoutReporter) renderNormal(evt events.Event) {
 		fprintf(r.out, "%s\n", r.styles.evidence.Render(discoveryLine(kind, label)))
 		return
 	}
+	if evt.EventType == events.EventCandidateBlocked {
+		line, ok := blockedCandidateLine(evt.PayloadJSON)
+		if ok {
+			fprintf(r.out, "%s\n", r.styles.failure.Render(line))
+		}
+		return
+	}
 	r.renderPhase(evt)
 }
 
@@ -177,6 +184,12 @@ func compactEvent(evt events.Event) (string, string, bool) {
 	case events.EventTaskFailed:
 		actionType, ok := actionTypeFromPayload(evt.PayloadJSON)
 		return "failed", string(actionType), ok
+	case events.EventCandidateBlocked:
+		actionType, reason, source, ok := blockedCandidatePayload(evt.PayloadJSON)
+		if source == "session_scope" {
+			return "blocked", fmt.Sprintf("%s: %s", actionType, reason), ok
+		}
+		return "blocked", fmt.Sprintf("%s: %s", actionType, reason), ok
 	case events.EventEvidenceCreated:
 		kind, label, ok := evidencePayload(evt.PayloadJSON)
 		if label == "" {
@@ -186,6 +199,26 @@ func compactEvent(evt events.Event) (string, string, bool) {
 	default:
 		return "", "", false
 	}
+}
+
+func blockedCandidateLine(payload string) (string, bool) {
+	actionType, reason, source, ok := blockedCandidatePayload(payload)
+	if !ok || source != "session_scope" {
+		return "", false
+	}
+	return fmt.Sprintf("Blocked by scope: %s %s", actionType, reason), true
+}
+
+func blockedCandidatePayload(payload string) (actions.ActionType, string, string, bool) {
+	var data struct {
+		ActionType actions.ActionType `json:"action_type"`
+		Reason     string             `json:"reason"`
+		Source     string             `json:"source"`
+	}
+	if err := json.Unmarshal([]byte(payload), &data); err != nil || data.ActionType == "" || data.Reason == "" {
+		return "", "", "", false
+	}
+	return data.ActionType, data.Reason, data.Source, true
 }
 
 func actionTypeFromPayload(payload string) (actions.ActionType, bool) {
