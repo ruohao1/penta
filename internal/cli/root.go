@@ -35,7 +35,7 @@ func NewPentaCommand() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(newReconCommand(app))
+	cmd.AddCommand(newReconCommand(app), newSessionCommand(app))
 
 	return cmd
 }
