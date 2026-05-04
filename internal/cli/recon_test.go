@@ -180,6 +180,9 @@ func TestReconCommandWritesMarkdownReport(t *testing.T) {
 func TestReconCommandDoesNotOverwriteExistingReport(t *testing.T) {
 	app := openTestApp(t)
 	cmd := newReconCommand(app)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
 	reportPath := filepath.Join(t.TempDir(), "report.md")
 	if err := os.WriteFile(reportPath, []byte("existing"), 0o644); err != nil {
 		t.Fatalf("write existing report: %v", err)
@@ -193,12 +196,55 @@ func TestReconCommandDoesNotOverwriteExistingReport(t *testing.T) {
 	if !strings.Contains(err.Error(), "report file already exists") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if strings.Contains(out.String(), "Recon started") || strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("existing report failure should not run recon or print usage: %q", out.String())
+	}
+	if got := queryCount(t, app, "runs"); got != 0 {
+		t.Fatalf("existing report failure created runs: got %d want 0", got)
+	}
 	data, readErr := os.ReadFile(reportPath)
 	if readErr != nil {
 		t.Fatalf("read existing report: %v", readErr)
 	}
 	if string(data) != "existing" {
 		t.Fatalf("existing report was overwritten: %q", data)
+	}
+}
+
+func TestRootCommandSuppressesUsageForRuntimeErrors(t *testing.T) {
+	t.Setenv("PENTA_STORAGE_DB_PATH", filepath.Join(t.TempDir(), "penta.db"))
+	reportPath := filepath.Join(t.TempDir(), "report.md")
+	if err := os.WriteFile(reportPath, []byte("existing"), 0o644); err != nil {
+		t.Fatalf("write existing report: %v", err)
+	}
+	cmd := NewPentaCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"recon", "1.2.3.4", "-o", reportPath})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected existing report file to fail")
+	}
+	if strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("runtime error printed usage: %q", out.String())
+	}
+}
+
+func TestRootCommandHelpStillShowsUsage(t *testing.T) {
+	t.Setenv("PENTA_STORAGE_DB_PATH", filepath.Join(t.TempDir(), "penta.db"))
+	cmd := NewPentaCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"recon", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("help command failed: %v", err)
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("help output missing usage: %q", out.String())
 	}
 }
 

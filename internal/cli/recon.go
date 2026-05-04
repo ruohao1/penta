@@ -22,9 +22,10 @@ func newReconCommand(app *App) *cobra.Command {
 	var outputPath string
 
 	cmd := &cobra.Command{
-		Use:   "recon",
-		Short: "Run recon commands",
-		Args:  cobra.ExactArgs(1),
+		Use:          "recon",
+		Short:        "Run recon commands",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runReconCommand(cmd, app, args[0])
 		},
@@ -40,6 +41,12 @@ func newReconCommand(app *App) *cobra.Command {
 func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 	if app == nil || app.DB == nil {
 		return fmt.Errorf("database is not initialized")
+	}
+	outputPath := flagString(cmd, "output")
+	if outputPath != "" {
+		if err := validateReportOutputPath(outputPath); err != nil {
+			return err
+		}
 	}
 
 	runID, err := createRun(cmd, app)
@@ -94,7 +101,7 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 		return err
 	}
 	reporter.RunCompleted(summary)
-	if outputPath := flagString(cmd, "output"); outputPath != "" {
+	if outputPath != "" {
 		if err := writeMarkdownReport(outputPath, summary); err != nil {
 			return err
 		}
@@ -106,11 +113,22 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 	return nil
 }
 
+func validateReportOutputPath(path string) error {
+	_, err := os.Stat(path)
+	if err == nil {
+		return reportFileExistsError(path)
+	}
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return fmt.Errorf("check report path %s: %w", path, err)
+}
+
 func writeMarkdownReport(path string, summary *viewmodel.RunSummary) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		if os.IsExist(err) {
-			return fmt.Errorf("report file already exists: %s", path)
+			return reportFileExistsError(path)
 		}
 		return fmt.Errorf("write report %s: %w", path, err)
 	}
@@ -119,6 +137,10 @@ func writeMarkdownReport(path string, summary *viewmodel.RunSummary) error {
 		return fmt.Errorf("write report %s: %w", path, err)
 	}
 	return nil
+}
+
+func reportFileExistsError(path string) error {
+	return fmt.Errorf("report file already exists: %s; choose a different path or remove the file", path)
 }
 
 func flagBool(cmd *cobra.Command, name string) bool {
