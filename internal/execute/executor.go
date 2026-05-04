@@ -126,6 +126,10 @@ func (e *Executor) registry() Registry {
 	return defaultRegistry
 }
 
+func (e *Executor) frontier() Frontier {
+	return Frontier{DB: e.DB, Events: e.Events, Registry: e.registry()}
+}
+
 func (e *Executor) enqueueFollowOns(ctx context.Context, task *sqlite.Task) error {
 	evidenceRows, err := e.DB.ListEvidenceByTask(ctx, task.ID)
 	if err != nil {
@@ -142,13 +146,14 @@ func (e *Executor) enqueueFollowOns(ctx context.Context, task *sqlite.Task) erro
 			return err
 		}
 	}
+	frontier := e.frontier()
 	for _, evidence := range evidenceRows {
 		candidates, err := scheduler.DeriveFromEvidence(evidence)
 		if err != nil {
 			return err
 		}
 		for _, candidate := range candidates {
-			if err := e.admitCandidate(ctx, run, scopeRules, candidate); err != nil {
+			if err := frontier.EnqueueCandidate(ctx, run, scopeRules, candidate); err != nil {
 				return err
 			}
 		}

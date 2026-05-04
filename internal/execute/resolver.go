@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/ruohao1/penta/internal/actions"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
 	seedtarget "github.com/ruohao1/penta/internal/actions/seed_target"
 	"github.com/ruohao1/penta/internal/events"
-	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/targets"
 )
 
@@ -81,7 +79,7 @@ func (e *Executor) enqueueSeedTarget(ctx context.Context, runID, raw string) err
 	if err != nil {
 		return err
 	}
-	return e.enqueueTask(ctx, runID, actions.ActionSeedTarget, string(inputJSON))
+	return e.frontier().enqueueTask(ctx, runID, actions.ActionSeedTarget, string(inputJSON))
 }
 
 func (e *Executor) enqueueProbeHTTP(ctx context.Context, runID string, input probehttp.Input) error {
@@ -89,27 +87,5 @@ func (e *Executor) enqueueProbeHTTP(ctx context.Context, runID string, input pro
 	if err != nil {
 		return err
 	}
-	return e.enqueueTask(ctx, runID, actions.ActionProbeHTTP, string(inputJSON))
-}
-
-func (e *Executor) enqueueTask(ctx context.Context, runID string, actionType actions.ActionType, inputJSON string) error {
-	task := sqlite.Task{
-		ID:         "task_" + uuid.NewString(),
-		RunID:      runID,
-		ActionType: actionType,
-		InputJSON:  inputJSON,
-		Status:     actions.TaskStatusPending,
-		CreatedAt:  time.Now(),
-	}
-	if err := e.DB.CreateTask(ctx, task); err != nil {
-		return err
-	}
-	return e.appendEvent(ctx, events.Event{
-		RunID:       runID,
-		EventType:   events.EventTaskEnqueued,
-		EntityKind:  events.EntityTask,
-		EntityID:    task.ID,
-		PayloadJSON: mustPayloadJSON(events.TaskEnqueuedPayload{ActionType: task.ActionType, Status: task.Status}),
-		CreatedAt:   time.Now(),
-	})
+	return e.frontier().enqueueTask(ctx, runID, actions.ActionProbeHTTP, string(inputJSON))
 }
