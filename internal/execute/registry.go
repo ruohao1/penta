@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ruohao1/penta/internal/actions"
+	fetchroot "github.com/ruohao1/penta/internal/actions/fetch_root"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
 	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
 	seedtarget "github.com/ruohao1/penta/internal/actions/seed_target"
@@ -24,6 +25,7 @@ func registry() map[actions.ActionType]RegisteredAction {
 		actions.ActionSeedTarget: {Spec: seedtarget.Spec, Handler: seedtarget.Execute},
 		actions.ActionProbeHTTP:  {Spec: probehttp.Spec, Handler: probehttp.Execute},
 		actions.ActionResolveDNS: {Spec: resolvedns.Spec, Handler: resolvedns.Execute},
+		actions.ActionFetchRoot:  {Spec: fetchroot.Spec, Handler: fetchroot.Execute},
 	}
 }
 

@@ -40,14 +40,16 @@ func TestSessionShowIncludesRunTaskAndEvidenceSummary(t *testing.T) {
 	app := openTestApp(t)
 	executeSessionCommand(t, app, "create", "Acme", "--kind", "bugbounty")
 	sessionID := firstSessionID(t, app)
+	target := newReconHTTPServer(t)
+	createTestScopeRule(t, app, sessionID, "scope_include", "include", "url", target)
 	cmd := newReconCommand(app)
-	cmd.SetArgs([]string{"--session", sessionID, "1.2.3.4", "-q"})
+	cmd.SetArgs([]string{"--session", sessionID, target, "-q"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute recon command: %v", err)
 	}
 
 	showOut := executeSessionCommand(t, app, "show", sessionID)
-	for _, want := range []string{"Runs      1 completed / 0 failed / 0 running / 0 pending", "Tasks     2 completed / 0 failed / 0 pending", "Evidence  1 target / 1 service", "Runs\n- run_"} {
+	for _, want := range []string{"Runs      1 completed / 0 failed / 0 running / 0 pending", "Tasks     3 completed / 0 failed / 0 pending", "Evidence  1 target / 1 service / 1 http_response", "Runs\n- run_"} {
 		if !strings.Contains(showOut, want) {
 			t.Fatalf("session show missing %q in %q", want, showOut)
 		}

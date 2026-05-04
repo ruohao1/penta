@@ -5,8 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -87,10 +91,37 @@ func assertAppErrorKind(t *testing.T, err error, kind apperr.Kind) {
 	}
 }
 
+func newReconHTTPServer(t *testing.T) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			t.Fatalf("unexpected fetch path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("ok"))
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+func servicePartsFromURL(t *testing.T, rawURL string) (host, scheme string, port int) {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse url: %v", err)
+	}
+	port, err = strconv.Atoi(parsed.Port())
+	if err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+	return parsed.Hostname(), parsed.Scheme, port
+}
+
 func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	app := openTestApp(t)
 	cmd := newReconCommand(app)
-	target := "1.2.3.4"
+	target := newReconHTTPServer(t)
+	host, scheme, port := servicePartsFromURL(t, target)
 	cmd.SetArgs([]string{target})
 
 	if err := cmd.Execute(); err != nil {
@@ -100,14 +131,14 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	if got := queryCount(t, app, "runs"); got != 1 {
 		t.Fatalf("unexpected runs count: got %d want 1", got)
 	}
-	if got := queryCount(t, app, "tasks"); got != 2 {
-		t.Fatalf("unexpected tasks count: got %d want 2", got)
+	if got := queryCount(t, app, "tasks"); got != 3 {
+		t.Fatalf("unexpected tasks count: got %d want 3", got)
 	}
 	if got := queryCount(t, app, "artifacts"); got != 0 {
 		t.Fatalf("unexpected artifacts count: got %d want 0", got)
 	}
-	if got := queryCount(t, app, "evidence"); got != 2 {
-		t.Fatalf("unexpected evidence count: got %d want 2", got)
+	if got := queryCount(t, app, "evidence"); got != 3 {
+		t.Fatalf("unexpected evidence count: got %d want 3", got)
 	}
 
 	var runStatus string
@@ -127,8 +158,8 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list tasks: %v", err)
 	}
-	if len(rows) != 2 {
-		t.Fatalf("unexpected listed task count: got %d want 2", len(rows))
+	if len(rows) != 3 {
+		t.Fatalf("unexpected listed task count: got %d want 3", len(rows))
 	}
 	for _, task := range rows {
 		if task.Status != actions.TaskStatusCompleted {
@@ -153,8 +184,8 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 		t.Fatalf("unexpected task raw input: got %q want %q", inputPayload["raw"], target)
 	}
 
-	assertTargetEvidence(t, app, target, "ip")
-	assertServiceEvidence(t, app, target, "https", 443)
+	assertTargetEvidence(t, app, target, "url")
+	assertServiceEvidence(t, app, host, scheme, port)
 	assertRunEventTypes(t, app, runID, []events.EventType{
 		events.EventRunCreated,
 		events.EventActionRequested,
@@ -164,6 +195,10 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 		events.EventTaskStarted,
 		events.EventEvidenceCreated,
 		events.EventTaskCompleted,
+		events.EventTaskStarted,
+		events.EventEvidenceCreated,
+		events.EventTaskCompleted,
+		events.EventTaskEnqueued,
 		events.EventTaskStarted,
 		events.EventEvidenceCreated,
 		events.EventTaskCompleted,
@@ -187,7 +222,9 @@ func TestReconCommandWritesMarkdownReport(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	reportPath := filepath.Join(t.TempDir(), "report.md")
-	cmd.SetArgs([]string{"--no-color", "-o", reportPath, "1.2.3.4"})
+	target := newReconHTTPServer(t)
+	host, scheme, port := servicePartsFromURL(t, target)
+	cmd.SetArgs([]string{"--no-color", "-o", reportPath, target})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute recon command: %v", err)
@@ -198,7 +235,8 @@ func TestReconCommandWritesMarkdownReport(t *testing.T) {
 		t.Fatalf("read report: %v", err)
 	}
 	got := string(data)
-	for _, want := range []string{"# Penta Recon Report", "## Summary", "## Targets", "## Services", "- ip 1.2.3.4", "- [https://1.2.3.4](https://1.2.3.4)"} {
+	serviceURL := scheme + "://" + host + ":" + strconv.Itoa(port)
+	for _, want := range []string{"# Penta Recon Report", "## Summary", "## Targets", "## Services", "## HTTP Responses", "- url " + target, "- [" + serviceURL + "](" + serviceURL + ")", "200"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("report missing %q in %q", want, got)
 		}
@@ -211,11 +249,12 @@ func TestReconCommandWritesMarkdownReport(t *testing.T) {
 func TestReconCommandAttachesRunToSession(t *testing.T) {
 	app := openTestApp(t)
 	sessionID := createTestSession(t, app, "Acme", "bugbounty")
-	createTestScopeRule(t, app, sessionID, "scope_include", "include", "ip", "1.2.3.4")
+	target := newReconHTTPServer(t)
+	createTestScopeRule(t, app, sessionID, "scope_include", "include", "url", target)
 	cmd := newReconCommand(app)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"--no-color", "--session", sessionID, "1.2.3.4"})
+	cmd.SetArgs([]string{"--no-color", "--session", sessionID, target})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute recon command: %v", err)

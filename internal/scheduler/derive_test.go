@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
+	fetchroot "github.com/ruohao1/penta/internal/actions/fetch_root"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
 	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
 	"github.com/ruohao1/penta/internal/model"
@@ -38,11 +39,11 @@ func TestDeriveFromTargetEvidenceIgnoresCIDR(t *testing.T) {
 
 func TestDeriveFromEvidenceIgnoresNonTargetEvidence(t *testing.T) {
 	candidates, err := DeriveFromEvidence(sqlite.Evidence{
-		ID:        "evidence_service",
+		ID:        "evidence_dns",
 		RunID:     "run_1",
 		TaskID:    "task_1",
-		Kind:      string(actions.EvidenceService),
-		DataJSON:  `{"host":"example.com","scheme":"https","port":443}`,
+		Kind:      string(actions.EvidenceDNSRecord),
+		DataJSON:  `{"domain":"example.com","records":["1.2.3.4"]}`,
 		CreatedAt: time.Now(),
 	})
 	if err != nil {
@@ -50,6 +51,29 @@ func TestDeriveFromEvidenceIgnoresNonTargetEvidence(t *testing.T) {
 	}
 	if len(candidates) != 0 {
 		t.Fatalf("unexpected candidates: %+v", candidates)
+	}
+}
+
+func TestDeriveFromServiceEvidenceCreatesFetchRoot(t *testing.T) {
+	service := model.Service{Scheme: "https", Host: "example.com", Port: 443}
+	data, err := json.Marshal(service)
+	if err != nil {
+		t.Fatalf("marshal service: %v", err)
+	}
+	candidates, err := DeriveFromEvidence(sqlite.Evidence{ID: "evidence_service", RunID: "run_1", TaskID: "task_1", Kind: string(actions.EvidenceService), DataJSON: string(data), CreatedAt: time.Now()})
+	if err != nil {
+		t.Fatalf("derive service evidence: %v", err)
+	}
+	candidate := findCandidate(t, candidates, actions.ActionFetchRoot)
+	if len(candidate.ParentEvidenceIDs) != 1 || candidate.ParentEvidenceIDs[0] != "evidence_service" {
+		t.Fatalf("unexpected parent evidence IDs: %+v", candidate.ParentEvidenceIDs)
+	}
+	var input fetchroot.Input
+	if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
+		t.Fatalf("unmarshal fetch root input: %v", err)
+	}
+	if input != service {
+		t.Fatalf("unexpected fetch root input: %+v", input)
 	}
 }
 
