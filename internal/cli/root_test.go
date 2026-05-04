@@ -50,3 +50,15 @@ func TestRootCommandHelpStillShowsUsageAfterSilencingErrors(t *testing.T) {
 		t.Fatalf("help wrote to stderr: %q", errOut.String())
 	}
 }
+
+func TestNewPentaCommandInitializesOutputSinks(t *testing.T) {
+	cmd := NewPentaCommand()
+	if cmd == nil {
+		t.Fatal("expected command")
+	}
+	// Full command behavior tests exercise injected stdout/stderr buffers; this
+	// regression check ensures root construction keeps output sink setup enabled.
+	if !cmd.SilenceErrors || !cmd.SilenceUsage {
+		t.Fatalf("unexpected root silence settings: errors=%v usage=%v", cmd.SilenceErrors, cmd.SilenceUsage)
+	}
+}

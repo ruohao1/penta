@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/ruohao1/penta/internal/config"
+	"github.com/ruohao1/penta/internal/output"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/spf13/cobra"
 )
@@ -35,6 +36,7 @@ func NewPentaCommand() *cobra.Command {
 			return nil
 		},
 	}
+	app.Sinks = output.New(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
 	cmd.AddCommand(newReconCommand(app), newSessionCommand(app))
 
