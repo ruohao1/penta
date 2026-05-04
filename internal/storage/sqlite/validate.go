@@ -33,6 +33,35 @@ func validateRun(run Run) error {
 	return requireNonEmpty("run.status", string(run.Status))
 }
 
+func validateSession(session Session) error {
+	if err := requireNonEmpty("session.id", session.ID); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("session.name", session.Name); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("session.kind", string(session.Kind)); err != nil {
+		return err
+	}
+	return requireNonEmpty("session.status", string(session.Status))
+}
+
+func validateScopeRule(rule ScopeRule) error {
+	if err := requireNonEmpty("scope_rule.id", rule.ID); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("scope_rule.session_id", rule.SessionID); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("scope_rule.effect", string(rule.Effect)); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("scope_rule.target_type", string(rule.TargetType)); err != nil {
+		return err
+	}
+	return requireNonEmpty("scope_rule.value", rule.Value)
+}
+
 func validateTask(task Task) error {
 	if err := requireNonEmpty("task.id", task.ID); err != nil {
 		return err

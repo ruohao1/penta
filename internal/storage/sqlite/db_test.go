@@ -104,6 +104,11 @@ func TestOpenMigratesLegacySchemaAndIsIdempotent(t *testing.T) {
 	if version != currentSchemaVersion {
 		t.Fatalf("unexpected schema version after reopen: got %d want %d", version, currentSchemaVersion)
 	}
+	if ok, err := db.columnExists(ctx, "runs", "session_id"); err != nil {
+		t.Fatalf("inspect runs.session_id: %v", err)
+	} else if !ok {
+		t.Fatal("legacy migration did not add runs.session_id")
+	}
 }
 
 func TestOpenRejectsNewerSchemaVersion(t *testing.T) {
@@ -241,6 +246,105 @@ func TestTaskArtifactAndEvidenceCRUD(t *testing.T) {
 	}
 	if !evidenceRows[0].CreatedAt.Equal(evidence.CreatedAt) {
 		t.Fatalf("unexpected evidence created_at: got %v want %v", evidenceRows[0].CreatedAt, evidence.CreatedAt)
+	}
+}
+
+func TestSessionScopeAndRunsCRUD(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	session := Session{
+		ID:        "session_1",
+		Name:      "Acme Bug Bounty",
+		Kind:      SessionKindBugBounty,
+		Status:    SessionStatusActive,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := db.CreateSession(ctx, session); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	gotSession, err := db.GetSession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if gotSession.ID != session.ID || gotSession.Name != session.Name || gotSession.Kind != session.Kind || gotSession.Status != session.Status {
+		t.Fatalf("unexpected session: %+v", gotSession)
+	}
+
+	rule := ScopeRule{
+		ID:         "scope_1",
+		SessionID:  session.ID,
+		Effect:     ScopeEffectInclude,
+		TargetType: ScopeTargetDomain,
+		Value:      "*.example.com",
+		CreatedAt:  now,
+	}
+	if err := db.CreateScopeRule(ctx, rule); err != nil {
+		t.Fatalf("create scope rule: %v", err)
+	}
+	rules, err := db.ListScopeRulesBySession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("list scope rules: %v", err)
+	}
+	if len(rules) != 1 || rules[0].ID != rule.ID || rules[0].Value != rule.Value {
+		t.Fatalf("unexpected scope rules: %+v", rules)
+	}
+
+	attachedRun := Run{ID: "run_session", SessionID: session.ID, Mode: "recon", Status: actions.RunStatusCompleted, CreatedAt: now}
+	standaloneRun := Run{ID: "run_standalone", Mode: "recon", Status: actions.RunStatusCompleted, CreatedAt: now}
+	if err := db.CreateRun(ctx, attachedRun); err != nil {
+		t.Fatalf("create attached run: %v", err)
+	}
+	if err := db.CreateRun(ctx, standaloneRun); err != nil {
+		t.Fatalf("create standalone run: %v", err)
+	}
+
+	gotRun, err := db.GetRun(ctx, attachedRun.ID)
+	if err != nil {
+		t.Fatalf("get attached run: %v", err)
+	}
+	if gotRun.SessionID != session.ID {
+		t.Fatalf("unexpected attached run session id: %+v", gotRun)
+	}
+	gotStandalone, err := db.GetRun(ctx, standaloneRun.ID)
+	if err != nil {
+		t.Fatalf("get standalone run: %v", err)
+	}
+	if gotStandalone.SessionID != "" {
+		t.Fatalf("standalone run should not have session id: %+v", gotStandalone)
+	}
+
+	runs, err := db.ListRunsBySession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("list runs by session: %v", err)
+	}
+	if len(runs) != 1 || runs[0].ID != attachedRun.ID {
+		t.Fatalf("unexpected session runs: %+v", runs)
+	}
+
+	if err := db.DeleteScopeRule(ctx, rule.ID); err != nil {
+		t.Fatalf("delete scope rule: %v", err)
+	}
+	rules, err = db.ListScopeRulesBySession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("list scope rules after delete: %v", err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("scope rule was not deleted: %+v", rules)
+	}
+
+	archiveTime := now.Add(time.Minute)
+	if err := db.ArchiveSession(ctx, session.ID, archiveTime); err != nil {
+		t.Fatalf("archive session: %v", err)
+	}
+	gotSession, err = db.GetSession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("get archived session: %v", err)
+	}
+	if gotSession.Status != SessionStatusArchived || !gotSession.UpdatedAt.Equal(archiveTime) {
+		t.Fatalf("unexpected archived session: %+v", gotSession)
 	}
 }
 
