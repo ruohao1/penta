@@ -42,6 +42,7 @@ func DeriveFromEvidence(evidence sqlite.Evidence) ([]CandidateTask, error) {
 				InputJSON:         string(dnsInputJSON),
 				Reason:            "domain target can be resolved with DNS",
 				ParentEvidenceIDs: []string{evidence.ID},
+				Target:            targetRef(target),
 			},
 			probeCandidate,
 		}, nil
@@ -68,7 +69,7 @@ func deriveServiceCandidates(evidence sqlite.Evidence) ([]CandidateTask, error) 
 	if err != nil {
 		return nil, err
 	}
-	return []CandidateTask{{ActionType: actions.ActionFetchRoot, InputJSON: string(inputJSON), Reason: "HTTP service root can be fetched", ParentEvidenceIDs: []string{evidence.ID}}}, nil
+	return []CandidateTask{{ActionType: actions.ActionFetchRoot, InputJSON: string(inputJSON), Reason: "HTTP service root can be fetched", ParentEvidenceIDs: []string{evidence.ID}, Target: serviceTargetRef(service)}}, nil
 }
 
 func newProbeHTTPCandidate(evidenceID string, target model.TargetRef) (CandidateTask, error) {
@@ -84,5 +85,18 @@ func newProbeHTTPCandidate(evidenceID string, target model.TargetRef) (Candidate
 		InputJSON:         string(inputJSON),
 		Reason:            fmt.Sprintf("target %s can be probed for HTTP service", target.Type),
 		ParentEvidenceIDs: []string{evidenceID},
+		Target:            targetRef(target),
 	}, nil
+}
+
+func targetRef(target model.TargetRef) *model.TargetRef {
+	return &model.TargetRef{Value: target.Value, Type: target.Type}
+}
+
+func serviceTargetRef(service model.Service) *model.TargetRef {
+	value := fmt.Sprintf("%s://%s", service.Scheme, service.Host)
+	if service.Port > 0 {
+		value = fmt.Sprintf("%s:%d", value, service.Port)
+	}
+	return &model.TargetRef{Value: value, Type: targets.TypeService}
 }

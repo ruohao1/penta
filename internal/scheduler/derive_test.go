@@ -75,6 +75,7 @@ func TestDeriveFromServiceEvidenceCreatesFetchRoot(t *testing.T) {
 	if input != service {
 		t.Fatalf("unexpected fetch root input: %+v", input)
 	}
+	assertCandidateTarget(t, candidate, "https://example.com:443", targets.TypeService)
 }
 
 func TestDeriveFromEvidenceRejectsInvalidTargetJSON(t *testing.T) {
@@ -130,6 +131,7 @@ func assertProbeHTTPCandidate(t *testing.T, candidates []CandidateTask, value st
 	if input.Value != value || input.Type != targetType {
 		t.Fatalf("unexpected candidate input: %+v", input)
 	}
+	assertCandidateTarget(t, candidate, value, targetType)
 }
 
 func assertResolveDNSCandidate(t *testing.T, candidates []CandidateTask, domain string) {
@@ -149,6 +151,17 @@ func assertResolveDNSCandidate(t *testing.T, candidates []CandidateTask, domain 
 	}
 	if input.Domain != domain {
 		t.Fatalf("unexpected resolve dns input: %+v", input)
+	}
+	assertCandidateTarget(t, candidate, domain, targets.TypeDomain)
+}
+
+func assertCandidateTarget(t *testing.T, candidate CandidateTask, value string, targetType targets.Type) {
+	t.Helper()
+	if candidate.Target == nil {
+		t.Fatalf("candidate missing target metadata: %+v", candidate)
+	}
+	if candidate.Target.Value != value || candidate.Target.Type != targetType {
+		t.Fatalf("unexpected candidate target: %+v", candidate.Target)
 	}
 }
 

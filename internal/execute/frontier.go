@@ -2,18 +2,11 @@ package execute
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net"
-	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/ruohao1/penta/internal/actions"
-	fetchroot "github.com/ruohao1/penta/internal/actions/fetch_root"
-	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
-	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/policy"
 	"github.com/ruohao1/penta/internal/scheduler"
@@ -96,53 +89,13 @@ func evaluateCandidateSessionScope(candidate scheduler.CandidateTask, sessionID 
 	if sessionID == "" {
 		return candidateScopeDecision{Allowed: true}
 	}
-	target, ok, err := targetFromCandidate(candidate)
+	if candidate.Target == nil {
+		return candidateScopeDecision{Allowed: true}
+	}
+	target, err := targets.Parse(candidate.Target.Value)
 	if err != nil {
 		return candidateScopeDecision{Allowed: false, Reason: fmt.Sprintf("candidate target could not be evaluated: %v", err)}
 	}
-	if !ok {
-		return candidateScopeDecision{Allowed: true}
-	}
 	decision := scope.EvaluateTarget(target, rules)
 	return candidateScopeDecision{Allowed: decision.Allowed, Reason: decision.Reason}
-}
-
-func targetFromCandidate(candidate scheduler.CandidateTask) (targets.Target, bool, error) {
-	switch candidate.ActionType {
-	case actions.ActionProbeHTTP:
-		var input probehttp.Input
-		if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
-			return nil, false, err
-		}
-		target, err := targets.Parse(input.Value)
-		return target, true, err
-	case actions.ActionResolveDNS:
-		var input resolvedns.Input
-		if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
-			return nil, false, err
-		}
-		target, err := targets.Parse(input.Domain)
-		return target, true, err
-	case actions.ActionFetchRoot:
-		var input fetchroot.Input
-		if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
-			return nil, false, err
-		}
-		target, err := targets.Parse(serviceURL(input))
-		return target, true, err
-	default:
-		return nil, false, nil
-	}
-}
-
-func serviceURL(input fetchroot.Input) string {
-	scheme := input.Scheme
-	if scheme == "" {
-		scheme = "https"
-	}
-	host := input.Host
-	if input.Port > 0 {
-		host = net.JoinHostPort(input.Host, strconv.Itoa(input.Port))
-	}
-	return (&url.URL{Scheme: scheme, Host: host, Path: "/"}).String()
 }
