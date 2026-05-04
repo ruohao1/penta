@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
+	"github.com/ruohao1/penta/internal/apperr"
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/execute"
 	"github.com/ruohao1/penta/internal/reporting"
@@ -152,7 +153,7 @@ func writeMarkdownReport(path string, summary *viewmodel.RunSummary) error {
 }
 
 func reportFileExistsError(path string) error {
-	return fmt.Errorf("report file already exists: %s; choose a different path or remove the file", path)
+	return apperr.Conflict("report file already exists: %s; choose a different path or remove the file", path)
 }
 
 func flagBool(cmd *cobra.Command, name string) bool {
@@ -189,7 +190,7 @@ func validateReconSession(cmd *cobra.Command, app *App, rawTarget string) (*sqli
 		return nil, fmt.Errorf("get session %s: %w", sessionID, err)
 	}
 	if session.Status != sqlite.SessionStatusActive {
-		return nil, fmt.Errorf("session %s is %s", session.ID, session.Status)
+		return nil, apperr.Conflict("session %s is %s", session.ID, session.Status)
 	}
 	target, err := targets.Parse(rawTarget)
 	if err != nil {
@@ -201,7 +202,7 @@ func validateReconSession(cmd *cobra.Command, app *App, rawTarget string) (*sqli
 	}
 	decision := scope.EvaluateTarget(target, rules)
 	if !decision.Allowed {
-		return nil, fmt.Errorf("target outside session scope: %s", decision.Reason)
+		return nil, apperr.Forbidden("target outside session scope: %s", decision.Reason)
 	}
 	return session, nil
 }

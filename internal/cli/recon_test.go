@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/ruohao1/penta/internal/actions"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
 	seedtarget "github.com/ruohao1/penta/internal/actions/seed_target"
+	"github.com/ruohao1/penta/internal/apperr"
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/execute"
 	"github.com/ruohao1/penta/internal/model"
@@ -72,6 +74,17 @@ func queryCount(t *testing.T, app *App, table string) int {
 	}
 
 	return count
+}
+
+func assertAppErrorKind(t *testing.T, err error, kind apperr.Kind) {
+	t.Helper()
+	var appErr *apperr.Error
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected app error, got %T: %v", err, err)
+	}
+	if appErr.Kind != kind {
+		t.Fatalf("unexpected app error kind: got %s want %s", appErr.Kind, kind)
+	}
 }
 
 func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
@@ -234,6 +247,7 @@ func TestReconCommandBlocksOutOfScopeSessionTargetBeforeRunCreation(t *testing.T
 	if !strings.Contains(err.Error(), "target outside session scope") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	assertAppErrorKind(t, err, apperr.KindForbidden)
 	if got := queryCount(t, app, "runs"); got != 0 {
 		t.Fatalf("out-of-scope target created runs: got %d want 0", got)
 	}
@@ -255,6 +269,7 @@ func TestReconCommandRejectsArchivedSessionBeforeRunCreation(t *testing.T) {
 	if !strings.Contains(err.Error(), "is archived") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	assertAppErrorKind(t, err, apperr.KindConflict)
 	if got := queryCount(t, app, "runs"); got != 0 {
 		t.Fatalf("archived session target created runs: got %d want 0", got)
 	}
@@ -279,6 +294,7 @@ func TestReconCommandDoesNotOverwriteExistingReport(t *testing.T) {
 	if !strings.Contains(err.Error(), "report file already exists") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	assertAppErrorKind(t, err, apperr.KindConflict)
 	if strings.Contains(out.String(), "Recon started") || strings.Contains(out.String(), "Usage:") {
 		t.Fatalf("existing report failure should not run recon or print usage: %q", out.String())
 	}
