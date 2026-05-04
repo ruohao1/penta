@@ -10,8 +10,9 @@ func NewPentaCommand() *cobra.Command {
 	app := &App{}
 
 	cmd := &cobra.Command{
-		Use:          "penta",
-		SilenceUsage: true,
+		Use:           "penta",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			config, err := config.Load()
 			if err != nil {
