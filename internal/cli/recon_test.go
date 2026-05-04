@@ -37,6 +37,24 @@ func openTestApp(t *testing.T) *App {
 	return &App{DB: db}
 }
 
+func createTestSession(t *testing.T, app *App, name, kind string) string {
+	t.Helper()
+	now := time.Now()
+	session := sqlite.Session{ID: "session_" + generateID(), Name: name, Kind: sqlite.SessionKind(kind), Status: sqlite.SessionStatusActive, CreatedAt: now, UpdatedAt: now}
+	if err := app.DB.CreateSession(context.Background(), session); err != nil {
+		t.Fatalf("create test session: %v", err)
+	}
+	return session.ID
+}
+
+func createTestScopeRule(t *testing.T, app *App, sessionID, id, effect, targetType, value string) {
+	t.Helper()
+	rule := sqlite.ScopeRule{ID: id, SessionID: sessionID, Effect: sqlite.ScopeEffect(effect), TargetType: sqlite.ScopeTargetType(targetType), Value: value, CreatedAt: time.Now()}
+	if err := app.DB.CreateScopeRule(context.Background(), rule); err != nil {
+		t.Fatalf("create test scope rule: %v", err)
+	}
+}
+
 func runTask(t *testing.T, app *App, taskID string) error {
 	t.Helper()
 
@@ -174,6 +192,71 @@ func TestReconCommandWritesMarkdownReport(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Report written: "+reportPath) {
 		t.Fatalf("stdout missing report path: %q", out.String())
+	}
+}
+
+func TestReconCommandAttachesRunToSession(t *testing.T) {
+	app := openTestApp(t)
+	sessionID := createTestSession(t, app, "Acme", "bugbounty")
+	createTestScopeRule(t, app, sessionID, "scope_include", "include", "ip", "1.2.3.4")
+	cmd := newReconCommand(app)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--no-color", "--session", sessionID, "1.2.3.4"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute recon command: %v", err)
+	}
+
+	var storedSessionID string
+	if err := app.DB.QueryRowContext(context.Background(), "SELECT session_id FROM runs LIMIT 1").Scan(&storedSessionID); err != nil {
+		t.Fatalf("query run session id: %v", err)
+	}
+	if storedSessionID != sessionID {
+		t.Fatalf("unexpected run session id: got %q want %q", storedSessionID, sessionID)
+	}
+	if !strings.Contains(out.String(), "Session "+sessionID+" (Acme, bugbounty)") {
+		t.Fatalf("session context missing from output: %q", out.String())
+	}
+}
+
+func TestReconCommandBlocksOutOfScopeSessionTargetBeforeRunCreation(t *testing.T) {
+	app := openTestApp(t)
+	sessionID := createTestSession(t, app, "Acme", "bugbounty")
+	createTestScopeRule(t, app, sessionID, "scope_include", "include", "domain", "*.example.com")
+	cmd := newReconCommand(app)
+	cmd.SetArgs([]string{"--session", sessionID, "1.2.3.4"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected out-of-scope target to fail")
+	}
+	if !strings.Contains(err.Error(), "target outside session scope") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := queryCount(t, app, "runs"); got != 0 {
+		t.Fatalf("out-of-scope target created runs: got %d want 0", got)
+	}
+}
+
+func TestReconCommandRejectsArchivedSessionBeforeRunCreation(t *testing.T) {
+	app := openTestApp(t)
+	sessionID := createTestSession(t, app, "Old", "ctf")
+	if err := app.DB.ArchiveSession(context.Background(), sessionID, time.Now()); err != nil {
+		t.Fatalf("archive session: %v", err)
+	}
+	cmd := newReconCommand(app)
+	cmd.SetArgs([]string{"--session", sessionID, "1.2.3.4"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected archived session to fail")
+	}
+	if !strings.Contains(err.Error(), "is archived") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := queryCount(t, app, "runs"); got != 0 {
+		t.Fatalf("archived session target created runs: got %d want 0", got)
 	}
 }
 

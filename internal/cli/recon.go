@@ -10,7 +10,9 @@ import (
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/execute"
 	"github.com/ruohao1/penta/internal/reporting"
+	"github.com/ruohao1/penta/internal/scope"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
+	"github.com/ruohao1/penta/internal/targets"
 	"github.com/ruohao1/penta/internal/viewmodel"
 	"github.com/spf13/cobra"
 )
@@ -20,6 +22,7 @@ func newReconCommand(app *App) *cobra.Command {
 	var quiet bool
 	var noColor bool
 	var outputPath string
+	var sessionID string
 
 	cmd := &cobra.Command{
 		Use:          "recon",
@@ -34,6 +37,7 @@ func newReconCommand(app *App) *cobra.Command {
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "only print final status and errors")
 	cmd.Flags().BoolVar(&noColor, "no-color", false, "disable colored output")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "write markdown report to file")
+	cmd.Flags().StringVar(&sessionID, "session", "", "attach run to an explicit session")
 
 	return cmd
 }
@@ -48,14 +52,21 @@ func runReconCommand(cmd *cobra.Command, app *App, target string) error {
 			return err
 		}
 	}
+	session, err := validateReconSession(cmd, app, target)
+	if err != nil {
+		return err
+	}
 
-	runID, err := createRun(cmd, app)
+	runID, err := createRun(cmd, app, sessionIDFromSession(session))
 	if err != nil {
 		return err
 	}
 	verbosity := verbosityFromFlags(flagBool(cmd, "quiet"), flagCount(cmd, "verbose"))
 	reporter := newStdoutReporter(cmd.OutOrStdout(), verbosity, !flagBool(cmd, "no-color"))
 	reporter.RunStarted(runID, target)
+	if session != nil {
+		reporter.SessionSelected(*session)
+	}
 	sink := reportingSink{inner: &events.SQLiteSink{DB: app.DB}, reporter: reporter}
 	executor := &execute.Executor{DB: app.DB, RunID: runID, Events: sink}
 	if err := sink.Append(cmd.Context(), events.Event{
@@ -167,10 +178,45 @@ func flagString(cmd *cobra.Command, name string) string {
 	return value
 }
 
-func createRun(cmd *cobra.Command, app *App) (string, error) {
+func validateReconSession(cmd *cobra.Command, app *App, rawTarget string) (*sqlite.Session, error) {
+	sessionID := flagString(cmd, "session")
+	if sessionID == "" {
+		return nil, nil
+	}
+	session, err := app.DB.GetSession(cmd.Context(), sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("get session %s: %w", sessionID, err)
+	}
+	if session.Status != sqlite.SessionStatusActive {
+		return nil, fmt.Errorf("session %s is %s", session.ID, session.Status)
+	}
+	target, err := targets.Parse(rawTarget)
+	if err != nil {
+		return nil, err
+	}
+	rules, err := app.DB.ListScopeRulesBySession(cmd.Context(), session.ID)
+	if err != nil {
+		return nil, err
+	}
+	decision := scope.EvaluateTarget(target, rules)
+	if !decision.Allowed {
+		return nil, fmt.Errorf("target outside session scope: %s", decision.Reason)
+	}
+	return session, nil
+}
+
+func sessionIDFromSession(session *sqlite.Session) string {
+	if session == nil {
+		return ""
+	}
+	return session.ID
+}
+
+func createRun(cmd *cobra.Command, app *App, sessionID string) (string, error) {
 	runID := "run_" + generateID()
 	run := sqlite.Run{
 		ID:        runID,
+		SessionID: sessionID,
 		Mode:      "recon",
 		Status:    actions.RunStatusPending,
 		CreatedAt: time.Now(),

@@ -10,6 +10,7 @@ import (
 	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/reporting"
+	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/viewmodel"
 )
 
@@ -41,6 +42,7 @@ func verbosityFromFlags(quiet bool, verboseCount int) Verbosity {
 
 type RunReporter interface {
 	RunStarted(runID, target string)
+	SessionSelected(session sqlite.Session)
 	Event(evt events.Event)
 	RunCompleted(summary *viewmodel.RunSummary)
 	RunFailed(runID string, err error)
@@ -63,6 +65,13 @@ func (r *stdoutReporter) RunStarted(runID, target string) {
 		return
 	}
 	fprintf(r.out, "%s\nRun     %s\nTarget  %s\n\n", r.styles.heading.Render("Recon started"), runID, target)
+}
+
+func (r *stdoutReporter) SessionSelected(session sqlite.Session) {
+	if r.verbosity == VerbosityQuiet {
+		return
+	}
+	fprintf(r.out, "Session %s (%s, %s)\n\n", session.ID, session.Name, session.Kind)
 }
 
 func (r *stdoutReporter) Event(evt events.Event) {
