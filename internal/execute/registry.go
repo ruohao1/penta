@@ -20,13 +20,28 @@ type RegisteredAction struct {
 	Handler Handler
 }
 
-func registry() map[actions.ActionType]RegisteredAction {
-	return map[actions.ActionType]RegisteredAction{
+type Registry map[actions.ActionType]RegisteredAction
+
+var defaultRegistry = mustRegistry(builtInRegistry())
+
+func builtInRegistry() Registry {
+	return Registry{
 		actions.ActionSeedTarget: {Spec: seedtarget.Spec, Handler: seedtarget.Execute},
 		actions.ActionProbeHTTP:  {Spec: probehttp.Spec, Handler: probehttp.Execute},
 		actions.ActionResolveDNS: {Spec: resolvedns.Spec, Handler: resolvedns.Execute},
 		actions.ActionFetchRoot:  {Spec: fetchroot.Spec, Handler: fetchroot.Execute},
 	}
+}
+
+func registry() Registry {
+	return defaultRegistry
+}
+
+func mustRegistry(registered Registry) Registry {
+	if err := validateRegistry(registered); err != nil {
+		panic(err)
+	}
+	return registered
 }
 
 func handlers() map[actions.ActionType]Handler {
