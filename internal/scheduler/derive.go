@@ -77,11 +77,11 @@ func deriveServiceCandidates(evidence sqlite.Evidence) ([]CandidateTask, error) 
 		return nil, nil
 	}
 	requestURL := serviceRootURL(service)
-	inputJSON, err := json.Marshal(httprequest.Input{Method: "GET", URL: requestURL})
+	inputJSON, err := json.Marshal(httprequest.Input{Method: "GET", URL: requestURL, Depth: 0})
 	if err != nil {
 		return nil, err
 	}
-	return []CandidateTask{{ActionType: actions.ActionHTTPRequest, InputJSON: string(inputJSON), Reason: "HTTP service root can be requested", ParentEvidenceIDs: []string{evidence.ID}, Target: &model.TargetRef{Value: requestURL, Type: targets.TypeURL}}}, nil
+	return []CandidateTask{{ActionType: actions.ActionHTTPRequest, InputJSON: string(inputJSON), Reason: "HTTP service root can be requested", ParentEvidenceIDs: []string{evidence.ID}, Target: &model.TargetRef{Value: requestURL, Type: targets.TypeURL}, Depth: 0}}, nil
 }
 
 func deriveHTTPResponseCandidates(evidence sqlite.Evidence) ([]CandidateTask, error) {
@@ -96,7 +96,7 @@ func deriveHTTPResponseCandidates(evidence sqlite.Evidence) ([]CandidateTask, er
 	if err != nil {
 		return nil, err
 	}
-	return []CandidateTask{{ActionType: actions.ActionCrawl, InputJSON: string(inputJSON), Reason: "HTML response can be crawled for links", ParentEvidenceIDs: []string{evidence.ID}, Target: &model.TargetRef{Value: response.URL, Type: targets.TypeURL}}}, nil
+	return []CandidateTask{{ActionType: actions.ActionCrawl, InputJSON: string(inputJSON), Reason: "HTML response can be crawled for links", ParentEvidenceIDs: []string{evidence.ID}, Target: &model.TargetRef{Value: response.URL, Type: targets.TypeURL}, Depth: response.Depth}}, nil
 }
 
 func deriveCrawlCandidates(evidence sqlite.Evidence) ([]CandidateTask, error) {
@@ -106,11 +106,12 @@ func deriveCrawlCandidates(evidence sqlite.Evidence) ([]CandidateTask, error) {
 	}
 	candidates := make([]CandidateTask, 0, len(result.URLs))
 	for _, value := range result.URLs {
-		inputJSON, err := json.Marshal(httprequest.Input{Method: "GET", URL: value})
+		depth := result.Depth + 1
+		inputJSON, err := json.Marshal(httprequest.Input{Method: "GET", URL: value, Depth: depth})
 		if err != nil {
 			return nil, err
 		}
-		candidates = append(candidates, CandidateTask{ActionType: actions.ActionHTTPRequest, InputJSON: string(inputJSON), Reason: "crawled URL can be requested", ParentEvidenceIDs: []string{evidence.ID}, Target: &model.TargetRef{Value: value, Type: targets.TypeURL}})
+		candidates = append(candidates, CandidateTask{ActionType: actions.ActionHTTPRequest, InputJSON: string(inputJSON), Reason: "crawled URL can be requested", ParentEvidenceIDs: []string{evidence.ID}, Target: &model.TargetRef{Value: value, Type: targets.TypeURL}, CrawlDerived: true, Depth: depth})
 	}
 	return candidates, nil
 }

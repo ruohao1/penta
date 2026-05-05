@@ -87,6 +87,7 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 	sum := sha256.Sum256(body)
 	evidenceData := Evidence{
 		URL:                requestURL,
+		Depth:              input.Depth,
 		StatusCode:         resp.StatusCode,
 		Headers:            responseHeaders,
 		HeadersTruncated:   headersTruncated,

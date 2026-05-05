@@ -77,14 +77,17 @@ func TestDeriveFromServiceEvidenceCreatesHTTPRequest(t *testing.T) {
 	if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
 		t.Fatalf("unmarshal http request input: %v", err)
 	}
-	if input.Method != "GET" || input.URL != "https://example.com:443/" {
+	if input.Method != "GET" || input.URL != "https://example.com:443/" || input.Depth != 0 {
 		t.Fatalf("unexpected http request input: %+v", input)
+	}
+	if candidate.Depth != 0 || candidate.CrawlDerived {
+		t.Fatalf("unexpected root request metadata: %+v", candidate)
 	}
 	assertCandidateTarget(t, candidate, "https://example.com:443/", targets.TypeURL)
 }
 
 func TestDeriveFromHTTPResponseEvidenceCreatesCrawl(t *testing.T) {
-	response := model.HTTPResponse{URL: "https://example.com/", ContentType: "text/html", BodyArtifactID: "artifact_1"}
+	response := model.HTTPResponse{URL: "https://example.com/", Depth: 1, ContentType: "text/html", BodyArtifactID: "artifact_1"}
 	data, err := json.Marshal(response)
 	if err != nil {
 		t.Fatalf("marshal response: %v", err)
@@ -104,11 +107,14 @@ func TestDeriveFromHTTPResponseEvidenceCreatesCrawl(t *testing.T) {
 	if input.URL != response.URL || input.BodyArtifactID != response.BodyArtifactID {
 		t.Fatalf("unexpected crawl input: %+v", input)
 	}
+	if input.Depth != 1 || candidate.Depth != 1 {
+		t.Fatalf("unexpected crawl depth: input=%+v candidate=%+v", input, candidate)
+	}
 	assertCandidateTarget(t, candidate, "https://example.com/", targets.TypeURL)
 }
 
 func TestDeriveFromCrawlEvidenceCreatesHTTPRequests(t *testing.T) {
-	result := model.CrawlResult{SourceURL: "https://example.com/", URLs: []string{"https://example.com/login", "https://example.com/help"}}
+	result := model.CrawlResult{SourceURL: "https://example.com/", Depth: 0, URLs: []string{"https://example.com/login", "https://example.com/help"}}
 	data, err := json.Marshal(result)
 	if err != nil {
 		t.Fatalf("marshal crawl result: %v", err)
@@ -128,8 +134,11 @@ func TestDeriveFromCrawlEvidenceCreatesHTTPRequests(t *testing.T) {
 		if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
 			t.Fatalf("unmarshal http request input: %v", err)
 		}
-		if input.Method != "GET" || input.URL == "" {
+		if input.Method != "GET" || input.URL == "" || input.Depth != 1 {
 			t.Fatalf("unexpected http request input: %+v", input)
+		}
+		if !candidate.CrawlDerived || candidate.Depth != 1 {
+			t.Fatalf("unexpected crawl candidate metadata: %+v", candidate)
 		}
 		assertCandidateTarget(t, candidate, input.URL, targets.TypeURL)
 	}

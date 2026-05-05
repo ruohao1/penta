@@ -41,7 +41,7 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 	if len(urls) == 0 {
 		return nil
 	}
-	evidenceJSON, err := json.Marshal(Evidence{SourceURL: input.URL, URLs: urls})
+	evidenceJSON, err := json.Marshal(Evidence{SourceURL: input.URL, Depth: input.Depth, URLs: urls})
 	if err != nil {
 		return err
 	}

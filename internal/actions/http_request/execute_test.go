@@ -31,7 +31,7 @@ func TestExecuteGETCreatesHTTPResponseEvidence(t *testing.T) {
 	defer server.Close()
 
 	db := openHTTPRequestTestDB(t)
-	task := createScopedHTTPRequestTask(t, db, Input{Method: "GET", URL: server.URL}, hostFromURL(t, server.URL))
+	task := createScopedHTTPRequestTask(t, db, Input{Method: "GET", URL: server.URL, Depth: 1}, hostFromURL(t, server.URL))
 
 	if err := Execute(context.Background(), db, nil, task); err != nil {
 		t.Fatalf("execute http request: %v", err)
@@ -39,7 +39,7 @@ func TestExecuteGETCreatesHTTPResponseEvidence(t *testing.T) {
 
 	evidence := taskHTTPResponseEvidence(t, db, task.ID)
 	wantSHA := sha256.Sum256([]byte("hello root"))
-	if evidence.URL != server.URL+"/" || evidence.StatusCode != http.StatusAccepted || evidence.ContentType != "text/html" || evidence.BodyBytes != int64(len("hello root")) || evidence.BodyReadLimitBytes != maxBodyBytes || evidence.BodyTruncated || evidence.BodySHA256 != hex.EncodeToString(wantSHA[:]) || evidence.BodyArtifactID == "" {
+	if evidence.URL != server.URL+"/" || evidence.Depth != 1 || evidence.StatusCode != http.StatusAccepted || evidence.ContentType != "text/html" || evidence.BodyBytes != int64(len("hello root")) || evidence.BodyReadLimitBytes != maxBodyBytes || evidence.BodyTruncated || evidence.BodySHA256 != hex.EncodeToString(wantSHA[:]) || evidence.BodyArtifactID == "" {
 		t.Fatalf("unexpected evidence: %+v", evidence)
 	}
 	artifacts, err := db.ListArtifactsByTask(context.Background(), task.ID)

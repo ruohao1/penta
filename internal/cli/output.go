@@ -204,10 +204,19 @@ func compactEvent(evt events.Event) (string, string, bool) {
 
 func blockedCandidateLine(payload string) (string, bool) {
 	actionType, reason, source, ok := blockedCandidatePayload(payload)
-	if !ok || source != "session_scope" {
+	if !ok {
 		return "", false
 	}
-	return fmt.Sprintf("Blocked by scope: %s %s", actionType, reason), true
+	switch source {
+	case "session_scope":
+		return fmt.Sprintf("Blocked by scope: %s %s", actionType, reason), true
+	case "crawl_depth":
+		return fmt.Sprintf("Blocked by crawl depth: %s %s", actionType, reason), true
+	case "crawl_budget":
+		return fmt.Sprintf("Blocked by crawl budget: %s %s", actionType, reason), true
+	default:
+		return "", false
+	}
 }
 
 func blockedCandidatePayload(payload string) (actions.ActionType, string, string, bool) {

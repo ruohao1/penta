@@ -42,7 +42,7 @@ func TestExecuteCreatesCrawlEvidenceFromHTMLArtifact(t *testing.T) {
 	if err := os.WriteFile(bodyPath, []byte(`<a href="/login">Login</a>`), 0o600); err != nil {
 		t.Fatalf("write body: %v", err)
 	}
-	task := createCrawlTask(t, db, Input{URL: "http://example.com/", ContentType: "text/html", BodyArtifactID: "artifact_body"})
+	task := createCrawlTask(t, db, Input{URL: "http://example.com/", Depth: 1, ContentType: "text/html", BodyArtifactID: "artifact_body"})
 	if err := db.CreateArtifact(context.Background(), sqlite.Artifact{ID: "artifact_body", TaskID: task.ID, Path: bodyPath, CreatedAt: time.Now()}); err != nil {
 		t.Fatalf("create artifact: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestExecuteCreatesCrawlEvidenceFromHTMLArtifact(t *testing.T) {
 	if err := json.Unmarshal([]byte(evidenceRows[0].DataJSON), &evidence); err != nil {
 		t.Fatalf("unmarshal crawl evidence: %v", err)
 	}
-	if evidence.SourceURL != "http://example.com/" || len(evidence.URLs) != 1 || evidence.URLs[0] != "http://example.com/login" {
+	if evidence.SourceURL != "http://example.com/" || evidence.Depth != 1 || len(evidence.URLs) != 1 || evidence.URLs[0] != "http://example.com/login" {
 		t.Fatalf("unexpected crawl evidence: %+v", evidence)
 	}
 }

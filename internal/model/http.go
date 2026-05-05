@@ -7,6 +7,7 @@ type HTTPHeader struct {
 
 type HTTPResponse struct {
 	URL                string       `json:"url"`
+	Depth              int          `json:"depth,omitempty"`
 	StatusCode         int          `json:"status_code"`
 	Headers            []HTTPHeader `json:"headers,omitempty"`
 	HeadersTruncated   bool         `json:"headers_truncated,omitempty"`

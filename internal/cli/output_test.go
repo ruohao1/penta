@@ -117,6 +117,21 @@ func TestStdoutReporterNormalPrintsScopeBlocks(t *testing.T) {
 	}
 }
 
+func TestStdoutReporterNormalPrintsCrawlBlocks(t *testing.T) {
+	var out bytes.Buffer
+	reporter := newStdoutReporter(&out, VerbosityNormal, false, false)
+	reporter.Event(candidateBlockedEventWithSource(actions.ActionHTTPRequest, "crawl depth 2 exceeds max depth 1", "crawl_depth"))
+	reporter.Event(candidateBlockedEventWithSource(actions.ActionHTTPRequest, "crawl URL budget 100 reached", "crawl_budget"))
+
+	got := out.String()
+	if !strings.Contains(got, "Blocked by crawl depth: http_request crawl depth 2 exceeds max depth 1") {
+		t.Fatalf("normal output missing crawl depth block: %q", got)
+	}
+	if !strings.Contains(got, "Blocked by crawl budget: http_request crawl URL budget 100 reached") {
+		t.Fatalf("normal output missing crawl budget block: %q", got)
+	}
+}
+
 func TestStdoutReporterVerbosePrintsLifecycle(t *testing.T) {
 	var out bytes.Buffer
 	reporter := newStdoutReporter(&out, VerbosityVerbose, false, false)
@@ -182,11 +197,15 @@ func evidenceCreatedEventWithLabel(kind, label string) events.Event {
 }
 
 func candidateBlockedEvent(actionType actions.ActionType, reason string) events.Event {
+	return candidateBlockedEventWithSource(actionType, reason, "session_scope")
+}
+
+func candidateBlockedEventWithSource(actionType actions.ActionType, reason, source string) events.Event {
 	return events.Event{
 		EventType:   events.EventCandidateBlocked,
 		EntityKind:  events.EntityRun,
 		EntityID:    "run_1",
-		PayloadJSON: mustPayloadJSON(events.CandidateBlockedPayload{ActionType: actionType, Reason: reason, Source: "session_scope", InputJSON: `{}`}),
+		PayloadJSON: mustPayloadJSON(events.CandidateBlockedPayload{ActionType: actionType, Reason: reason, Source: source, InputJSON: `{}`}),
 		CreatedAt:   time.Now(),
 	}
 }

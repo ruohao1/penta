@@ -11,4 +11,6 @@ type CandidateTask struct {
 	Reason            string
 	ParentEvidenceIDs []string
 	Target            *model.TargetRef
+	CrawlDerived      bool
+	Depth             int
 }

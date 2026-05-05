@@ -2,17 +2,24 @@ package execute
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/ruohao1/penta/internal/actions"
+	httprequest "github.com/ruohao1/penta/internal/actions/http_request"
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/policy"
 	"github.com/ruohao1/penta/internal/scheduler"
 	"github.com/ruohao1/penta/internal/scope"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/targets"
+)
+
+const (
+	defaultMaxCrawlDepth      = 1
+	defaultMaxCrawlURLsPerRun = 100
 )
 
 type Frontier struct {
@@ -34,6 +41,18 @@ func (f Frontier) EnqueueCandidate(ctx context.Context, run *sqlite.Run, rules [
 	if !scopeDecision.Allowed {
 		return f.blockCandidate(ctx, run.ID, candidate, "session_scope", scopeDecision.Reason)
 	}
+	if candidate.CrawlDerived && candidate.ActionType == actions.ActionHTTPRequest {
+		if candidate.Depth > defaultMaxCrawlDepth {
+			return f.blockCandidate(ctx, run.ID, candidate, "crawl_depth", fmt.Sprintf("crawl depth %d exceeds max depth %d", candidate.Depth, defaultMaxCrawlDepth))
+		}
+		count, err := f.crawlURLTaskCount(ctx, run.ID)
+		if err != nil {
+			return err
+		}
+		if count >= defaultMaxCrawlURLsPerRun {
+			return f.blockCandidate(ctx, run.ID, candidate, "crawl_budget", fmt.Sprintf("crawl URL budget %d reached", defaultMaxCrawlURLsPerRun))
+		}
+	}
 	exists, err := f.DB.TaskExistsByRunActionInput(ctx, run.ID, candidate.ActionType, candidate.InputJSON)
 	if err != nil {
 		return err
@@ -42,6 +61,27 @@ func (f Frontier) EnqueueCandidate(ctx context.Context, run *sqlite.Run, rules [
 		return nil
 	}
 	return f.enqueueTask(ctx, run.ID, candidate.ActionType, candidate.InputJSON)
+}
+
+func (f Frontier) crawlURLTaskCount(ctx context.Context, runID string) (int, error) {
+	tasks, err := f.DB.ListTasksByRun(ctx, runID)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, task := range tasks {
+		if task.ActionType != actions.ActionHTTPRequest {
+			continue
+		}
+		var input httprequest.Input
+		if err := json.Unmarshal([]byte(task.InputJSON), &input); err != nil {
+			continue
+		}
+		if input.Depth > 0 {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (f Frontier) blockCandidate(ctx context.Context, runID string, candidate scheduler.CandidateTask, source, reason string) error {
