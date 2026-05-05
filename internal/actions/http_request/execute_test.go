@@ -39,8 +39,40 @@ func TestExecuteGETCreatesHTTPResponseEvidence(t *testing.T) {
 
 	evidence := taskHTTPResponseEvidence(t, db, task.ID)
 	wantSHA := sha256.Sum256([]byte("hello root"))
-	if evidence.URL != server.URL+"/" || evidence.StatusCode != http.StatusAccepted || evidence.ContentType != "text/html" || evidence.BodyBytes != int64(len("hello root")) || evidence.BodyReadLimitBytes != maxBodyBytes || evidence.BodyTruncated || evidence.BodySHA256 != hex.EncodeToString(wantSHA[:]) {
+	if evidence.URL != server.URL+"/" || evidence.StatusCode != http.StatusAccepted || evidence.ContentType != "text/html" || evidence.BodyBytes != int64(len("hello root")) || evidence.BodyReadLimitBytes != maxBodyBytes || evidence.BodyTruncated || evidence.BodySHA256 != hex.EncodeToString(wantSHA[:]) || evidence.BodyArtifactID == "" {
 		t.Fatalf("unexpected evidence: %+v", evidence)
+	}
+	artifacts, err := db.ListArtifactsByTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("list artifacts: %v", err)
+	}
+	if len(artifacts) != 1 || artifacts[0].ID != evidence.BodyArtifactID {
+		t.Fatalf("unexpected artifacts: %+v", artifacts)
+	}
+}
+
+func TestExecuteDoesNotStoreBodyArtifactForNonHTML(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	db := openHTTPRequestTestDB(t)
+	task := createScopedHTTPRequestTask(t, db, Input{Method: "GET", URL: server.URL}, hostFromURL(t, server.URL))
+
+	if err := Execute(context.Background(), db, nil, task); err != nil {
+		t.Fatalf("execute http request: %v", err)
+	}
+	evidence := taskHTTPResponseEvidence(t, db, task.ID)
+	if evidence.BodyArtifactID != "" {
+		t.Fatalf("expected no body artifact for non-html response: %+v", evidence)
+	}
+	artifacts, err := db.ListArtifactsByTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("list artifacts: %v", err)
+	}
+	if len(artifacts) != 0 {
+		t.Fatalf("unexpected artifacts: %+v", artifacts)
 	}
 }
 

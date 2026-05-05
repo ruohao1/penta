@@ -83,6 +83,58 @@ func TestDeriveFromServiceEvidenceCreatesHTTPRequest(t *testing.T) {
 	assertCandidateTarget(t, candidate, "https://example.com:443/", targets.TypeURL)
 }
 
+func TestDeriveFromHTTPResponseEvidenceCreatesCrawl(t *testing.T) {
+	response := model.HTTPResponse{URL: "https://example.com/", ContentType: "text/html", BodyArtifactID: "artifact_1"}
+	data, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	candidates, err := DeriveFromEvidence(sqlite.Evidence{ID: "evidence_http", RunID: "run_1", TaskID: "task_1", Kind: string(actions.EvidenceHTTPResponse), DataJSON: string(data), CreatedAt: time.Now()})
+	if err != nil {
+		t.Fatalf("derive http response evidence: %v", err)
+	}
+	candidate := findCandidate(t, candidates, actions.ActionCrawl)
+	if len(candidate.ParentEvidenceIDs) != 1 || candidate.ParentEvidenceIDs[0] != "evidence_http" {
+		t.Fatalf("unexpected parent evidence IDs: %+v", candidate.ParentEvidenceIDs)
+	}
+	var input model.HTTPResponse
+	if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
+		t.Fatalf("unmarshal crawl input: %v", err)
+	}
+	if input.URL != response.URL || input.BodyArtifactID != response.BodyArtifactID {
+		t.Fatalf("unexpected crawl input: %+v", input)
+	}
+	assertCandidateTarget(t, candidate, "https://example.com/", targets.TypeURL)
+}
+
+func TestDeriveFromCrawlEvidenceCreatesHTTPRequests(t *testing.T) {
+	result := model.CrawlResult{SourceURL: "https://example.com/", URLs: []string{"https://example.com/login", "https://example.com/help"}}
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal crawl result: %v", err)
+	}
+	candidates, err := DeriveFromEvidence(sqlite.Evidence{ID: "evidence_crawl", RunID: "run_1", TaskID: "task_1", Kind: string(actions.EvidenceCrawl), DataJSON: string(data), CreatedAt: time.Now()})
+	if err != nil {
+		t.Fatalf("derive crawl evidence: %v", err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("unexpected candidates: %+v", candidates)
+	}
+	for _, candidate := range candidates {
+		if candidate.ActionType != actions.ActionHTTPRequest {
+			t.Fatalf("unexpected action type: %s", candidate.ActionType)
+		}
+		var input httprequest.Input
+		if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
+			t.Fatalf("unmarshal http request input: %v", err)
+		}
+		if input.Method != "GET" || input.URL == "" {
+			t.Fatalf("unexpected http request input: %+v", input)
+		}
+		assertCandidateTarget(t, candidate, input.URL, targets.TypeURL)
+	}
+}
+
 func TestDeriveFromEvidenceRejectsInvalidTargetJSON(t *testing.T) {
 	_, err := DeriveFromEvidence(sqlite.Evidence{
 		ID:        "evidence_bad",

@@ -50,7 +50,7 @@ func TestSessionShowIncludesRunTaskAndEvidenceSummary(t *testing.T) {
 	}
 
 	showOut := executeSessionCommand(t, app, "show", sessionID)
-	for _, want := range []string{"Runs      1 completed / 0 failed / 0 running / 0 pending", "Tasks     3 completed / 0 failed / 0 pending", "Evidence  1 target / 1 service / 1 http_response", "Runs\n- run_"} {
+	for _, want := range []string{"Runs      1 completed / 0 failed / 0 running / 0 pending", "Tasks     4 completed / 0 failed / 0 pending", "Evidence  1 target / 1 service / 1 http_response", "Runs\n- run_"} {
 		if !strings.Contains(showOut, want) {
 			t.Fatalf("session show missing %q in %q", want, showOut)
 		}

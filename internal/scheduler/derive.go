@@ -6,8 +6,10 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/ruohao1/penta/internal/actions"
+	crawlaction "github.com/ruohao1/penta/internal/actions/crawl"
 	httprequest "github.com/ruohao1/penta/internal/actions/http_request"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
 	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
@@ -19,6 +21,12 @@ import (
 func DeriveFromEvidence(evidence sqlite.Evidence) ([]CandidateTask, error) {
 	if evidence.Kind == string(actions.EvidenceService) {
 		return deriveServiceCandidates(evidence)
+	}
+	if evidence.Kind == string(actions.EvidenceHTTPResponse) {
+		return deriveHTTPResponseCandidates(evidence)
+	}
+	if evidence.Kind == string(actions.EvidenceCrawl) {
+		return deriveCrawlCandidates(evidence)
 	}
 	if evidence.Kind != string(actions.EvidenceTarget) {
 		return nil, nil
@@ -74,6 +82,37 @@ func deriveServiceCandidates(evidence sqlite.Evidence) ([]CandidateTask, error) 
 		return nil, err
 	}
 	return []CandidateTask{{ActionType: actions.ActionHTTPRequest, InputJSON: string(inputJSON), Reason: "HTTP service root can be requested", ParentEvidenceIDs: []string{evidence.ID}, Target: &model.TargetRef{Value: requestURL, Type: targets.TypeURL}}}, nil
+}
+
+func deriveHTTPResponseCandidates(evidence sqlite.Evidence) ([]CandidateTask, error) {
+	var response model.HTTPResponse
+	if err := json.Unmarshal([]byte(evidence.DataJSON), &response); err != nil {
+		return nil, fmt.Errorf("decode http response evidence %s: %w", evidence.ID, err)
+	}
+	if response.BodyArtifactID == "" || !strings.Contains(strings.ToLower(response.ContentType), "text/html") {
+		return nil, nil
+	}
+	inputJSON, err := json.Marshal(crawlaction.Input(response))
+	if err != nil {
+		return nil, err
+	}
+	return []CandidateTask{{ActionType: actions.ActionCrawl, InputJSON: string(inputJSON), Reason: "HTML response can be crawled for links", ParentEvidenceIDs: []string{evidence.ID}, Target: &model.TargetRef{Value: response.URL, Type: targets.TypeURL}}}, nil
+}
+
+func deriveCrawlCandidates(evidence sqlite.Evidence) ([]CandidateTask, error) {
+	var result model.CrawlResult
+	if err := json.Unmarshal([]byte(evidence.DataJSON), &result); err != nil {
+		return nil, fmt.Errorf("decode crawl evidence %s: %w", evidence.ID, err)
+	}
+	candidates := make([]CandidateTask, 0, len(result.URLs))
+	for _, value := range result.URLs {
+		inputJSON, err := json.Marshal(httprequest.Input{Method: "GET", URL: value})
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, CandidateTask{ActionType: actions.ActionHTTPRequest, InputJSON: string(inputJSON), Reason: "crawled URL can be requested", ParentEvidenceIDs: []string{evidence.ID}, Target: &model.TargetRef{Value: value, Type: targets.TypeURL}})
+	}
+	return candidates, nil
 }
 
 func newProbeHTTPCandidate(evidenceID string, target model.TargetRef) (CandidateTask, error) {

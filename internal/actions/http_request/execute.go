@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -78,6 +80,10 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 		bodyBytes = maxBodyBytes
 	}
 	responseHeaders, headersTruncated := headers(resp.Header)
+	bodyArtifactID, err := createHTMLBodyArtifact(ctx, db, task.ID, resp.Header.Get("Content-Type"), body)
+	if err != nil {
+		return err
+	}
 	sum := sha256.Sum256(body)
 	evidenceData := Evidence{
 		URL:                requestURL,
@@ -90,6 +96,7 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 		BodyReadLimitBytes: maxBodyBytes,
 		BodyTruncated:      bodyTruncated,
 		BodySHA256:         hex.EncodeToString(sum[:]),
+		BodyArtifactID:     bodyArtifactID,
 	}
 	evidenceJSON, err := json.Marshal(evidenceData)
 	if err != nil {
@@ -198,6 +205,45 @@ func positiveContentLength(value int64) int64 {
 		return value
 	}
 	return 0
+}
+
+func createHTMLBodyArtifact(ctx context.Context, db *sqlite.DB, taskID, contentType string, body []byte) (string, error) {
+	if len(body) == 0 || !isHTMLContentType(contentType) {
+		return "", nil
+	}
+	artifactID := "artifact_" + uuid.NewString()
+	dir, err := artifactDir(ctx, db)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, artifactID+".body")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		return "", err
+	}
+	artifact := sqlite.Artifact{ID: artifactID, TaskID: taskID, Path: path, CreatedAt: time.Now()}
+	if err := db.CreateArtifact(ctx, artifact); err != nil {
+		return "", err
+	}
+	return artifactID, nil
+}
+
+func isHTMLContentType(contentType string) bool {
+	return strings.Contains(strings.ToLower(contentType), "text/html")
+}
+
+func artifactDir(ctx context.Context, db *sqlite.DB) (string, error) {
+	var seq int
+	var name, path string
+	if err := db.QueryRowContext(ctx, `PRAGMA database_list`).Scan(&seq, &name, &path); err != nil {
+		return "", err
+	}
+	if path == "" {
+		return filepath.Join(os.TempDir(), "penta-artifacts"), nil
+	}
+	return filepath.Join(filepath.Dir(path), "artifacts"), nil
 }
 
 type networkGuard struct {

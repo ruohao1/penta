@@ -162,11 +162,11 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	if got := queryCount(t, app, "runs"); got != 1 {
 		t.Fatalf("unexpected runs count: got %d want 1", got)
 	}
-	if got := queryCount(t, app, "tasks"); got != 3 {
-		t.Fatalf("unexpected tasks count: got %d want 3", got)
+	if got := queryCount(t, app, "tasks"); got != 4 {
+		t.Fatalf("unexpected tasks count: got %d want 4", got)
 	}
-	if got := queryCount(t, app, "artifacts"); got != 0 {
-		t.Fatalf("unexpected artifacts count: got %d want 0", got)
+	if got := queryCount(t, app, "artifacts"); got != 1 {
+		t.Fatalf("unexpected artifacts count: got %d want 1", got)
 	}
 	if got := queryCount(t, app, "evidence"); got != 3 {
 		t.Fatalf("unexpected evidence count: got %d want 3", got)
@@ -189,8 +189,8 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list tasks: %v", err)
 	}
-	if len(rows) != 3 {
-		t.Fatalf("unexpected listed task count: got %d want 3", len(rows))
+	if len(rows) != 4 {
+		t.Fatalf("unexpected listed task count: got %d want 4", len(rows))
 	}
 	for _, task := range rows {
 		if task.Status != actions.TaskStatusCompleted {
@@ -232,6 +232,9 @@ func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 		events.EventTaskEnqueued,
 		events.EventTaskStarted,
 		events.EventEvidenceCreated,
+		events.EventTaskCompleted,
+		events.EventTaskEnqueued,
+		events.EventTaskStarted,
 		events.EventTaskCompleted,
 		events.EventRunCompleted,
 	})
@@ -391,8 +394,8 @@ func TestReconCommandHandlesScopedServiceTarget(t *testing.T) {
 	if got := queryCount(t, app, "runs"); got != 1 {
 		t.Fatalf("unexpected runs count: got %d want 1", got)
 	}
-	if got := queryCount(t, app, "tasks"); got != 3 {
-		t.Fatalf("unexpected tasks count: got %d want 3", got)
+	if got := queryCount(t, app, "tasks"); got != 4 {
+		t.Fatalf("unexpected tasks count: got %d want 4", got)
 	}
 	if got := queryCount(t, app, "evidence"); got != 3 {
 		t.Fatalf("unexpected evidence count: got %d want 3", got)

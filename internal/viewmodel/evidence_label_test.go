@@ -67,6 +67,22 @@ func TestEvidenceSummaryFormatsHTTPResponse(t *testing.T) {
 	}
 }
 
+func TestEvidenceSummaryFormatsCrawl(t *testing.T) {
+	summary := evidenceSummaryForTest(t, sqlite.Evidence{Kind: "crawl", DataJSON: `{"source_url":"https://example.com/","urls":["https://example.com/login","https://example.com/help"]}`})
+	if summary.Label != "2 urls from https://example.com/" || summary.URL != "https://example.com/" {
+		t.Fatalf("unexpected crawl summary: %+v", summary)
+	}
+	wantDetails := []string{"https://example.com/login", "https://example.com/help"}
+	if len(summary.Details) != len(wantDetails) {
+		t.Fatalf("unexpected crawl details: %+v", summary.Details)
+	}
+	for i, want := range wantDetails {
+		if summary.Details[i] != want {
+			t.Fatalf("unexpected crawl detail %d: got %q want %q", i, summary.Details[i], want)
+		}
+	}
+}
+
 func evidenceLabelForTest(t *testing.T, evidence sqlite.Evidence) string {
 	t.Helper()
 	summary := evidenceSummaryForTest(t, evidence)

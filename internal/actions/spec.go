@@ -19,6 +19,7 @@ const (
 	EvidenceService      EvidenceKind = "service"
 	EvidenceDNSRecord    EvidenceKind = "dns_record"
 	EvidenceHTTPResponse EvidenceKind = "http_response"
+	EvidenceCrawl        EvidenceKind = "crawl"
 )
 
 type ActionSpec struct {

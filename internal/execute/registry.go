@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ruohao1/penta/internal/actions"
+	crawlaction "github.com/ruohao1/penta/internal/actions/crawl"
 	httprequest "github.com/ruohao1/penta/internal/actions/http_request"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
 	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
@@ -30,6 +31,7 @@ func builtInRegistry() Registry {
 		actions.ActionProbeHTTP:   {Spec: probehttp.Spec, Handler: probehttp.Execute},
 		actions.ActionResolveDNS:  {Spec: resolvedns.Spec, Handler: resolvedns.Execute},
 		actions.ActionHTTPRequest: {Spec: httprequest.Spec, Handler: httprequest.Execute},
+		actions.ActionCrawl:       {Spec: crawlaction.Spec, Handler: crawlaction.Execute},
 	}
 }
 

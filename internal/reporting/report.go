@@ -180,6 +180,7 @@ func evidenceSections() []evidenceSection {
 		{kind: "dns_record", title: "DNS Records"},
 		{kind: "service", title: "Services"},
 		{kind: "http_response", title: "HTTP Responses"},
+		{kind: "crawl", title: "Crawl"},
 	}
 }
 
@@ -210,7 +211,7 @@ func FormatTaskCounts(counts map[actions.TaskStatus]int) string {
 }
 
 func FormatEvidenceCounts(counts map[string]int) string {
-	ordered := []string{"target", "dns_record", "service", "http_response"}
+	ordered := []string{"target", "dns_record", "service", "http_response", "crawl"}
 	parts := make([]string, 0, len(counts))
 	seen := map[string]bool{}
 	for _, kind := range ordered {

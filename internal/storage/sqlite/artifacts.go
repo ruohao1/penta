@@ -24,6 +24,19 @@ func (db *DB) CreateArtifact(ctx context.Context, artifact Artifact) error {
 	return err
 }
 
+func (db *DB) GetArtifact(ctx context.Context, id string) (*Artifact, error) {
+	row := db.QueryRowContext(ctx, `
+		SELECT id, task_id, path, created_at
+		FROM artifacts
+		WHERE id = ?
+	`, id)
+	var artifact Artifact
+	if err := row.Scan(&artifact.ID, &artifact.TaskID, &artifact.Path, &artifact.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &artifact, nil
+}
+
 func (db *DB) ListArtifactsByTask(ctx context.Context, taskID string) ([]Artifact, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT id, task_id, path, created_at

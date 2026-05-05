@@ -99,6 +99,22 @@ func EvidenceSummaryFor(evidence sqlite.Evidence) (EvidenceSummary, error) {
 			summary.Details = append(summary.Details, "body artifact: "+response.BodyArtifactID)
 		}
 		return summary, nil
+	case "crawl":
+		var result model.CrawlResult
+		if err := json.Unmarshal([]byte(evidence.DataJSON), &result); err != nil {
+			return EvidenceSummary{}, err
+		}
+		summary.URL = result.SourceURL
+		count := len(result.URLs)
+		if count == 1 {
+			summary.Label = "1 url from " + result.SourceURL
+		} else {
+			summary.Label = fmt.Sprintf("%d urls from %s", count, result.SourceURL)
+		}
+		for _, value := range result.URLs {
+			summary.Details = append(summary.Details, value)
+		}
+		return summary, nil
 	default:
 		summary.Label = evidence.Kind
 		return summary, nil
