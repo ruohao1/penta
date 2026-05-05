@@ -2,19 +2,25 @@ package reporting
 
 import (
 	"fmt"
+	"io"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/output"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/viewmodel"
 )
 
+var terminalColorRenderer = lipgloss.NewRenderer(io.Discard, termenv.WithProfile(termenv.ANSI), termenv.WithUnsafe())
+
 type RenderOptions struct {
 	Redact bool
+	Color  bool
 }
 
 func RenderTerminalReport(summary *viewmodel.RunSummary) string {
@@ -35,7 +41,7 @@ func RenderTerminalReportWithOptions(summary *viewmodel.RunSummary, options Rend
 	if summary.DBPath != "" {
 		fprintf(&b, "Database   %s\n", summary.DBPath)
 	}
-	renderTerminalEvidenceSections(&b, summary)
+	renderTerminalEvidenceSections(&b, summary, options)
 	return b.String()
 }
 
@@ -114,7 +120,7 @@ func FormatScopeCounts(rules []sqlite.ScopeRule) string {
 	return fmt.Sprintf("%d include / %d exclude", includeCount, excludeCount)
 }
 
-func renderTerminalEvidenceSections(b *strings.Builder, summary *viewmodel.RunSummary) {
+func renderTerminalEvidenceSections(b *strings.Builder, summary *viewmodel.RunSummary, options RenderOptions) {
 	groups := evidenceByKind(summary)
 	for _, section := range evidenceSections() {
 		evidenceRows := groups[section.kind]
@@ -122,7 +128,7 @@ func renderTerminalEvidenceSections(b *strings.Builder, summary *viewmodel.RunSu
 			continue
 		}
 		if section.kind == "http_response" {
-			renderTerminalHTTPResponses(b, evidenceRows)
+			renderTerminalHTTPResponses(b, evidenceRows, options)
 			continue
 		}
 		if section.kind == "crawl" {
@@ -148,14 +154,14 @@ func renderTerminalEvidenceSections(b *strings.Builder, summary *viewmodel.RunSu
 	}
 }
 
-func renderTerminalHTTPResponses(b *strings.Builder, evidenceRows []viewmodel.EvidenceSummary) {
+func renderTerminalHTTPResponses(b *strings.Builder, evidenceRows []viewmodel.EvidenceSummary, options RenderOptions) {
 	b.WriteString("\nHTTP Responses\n")
 	for _, evidence := range evidenceRows {
-		fprintf(b, "- %s\n", compactHTTPResponseLine(evidence))
+		fprintf(b, "- %s\n", compactHTTPResponseLine(evidence, options))
 	}
 }
 
-func compactHTTPResponseLine(evidence viewmodel.EvidenceSummary) string {
+func compactHTTPResponseLine(evidence viewmodel.EvidenceSummary, options RenderOptions) string {
 	status := ""
 	fields := strings.Fields(evidence.Label)
 	if len(fields) > 0 {
@@ -166,7 +172,7 @@ func compactHTTPResponseLine(evidence viewmodel.EvidenceSummary) string {
 	}
 	parts := make([]string, 0, 4)
 	if status != "" {
-		parts = append(parts, status)
+		parts = append(parts, styleHTTPStatus(status, options.Color))
 	}
 	if contentType := compactDetailValue(evidence.Details, "content-type: "); contentType != "" {
 		parts = append(parts, compactContentType(contentType))
@@ -176,12 +182,39 @@ func compactHTTPResponseLine(evidence viewmodel.EvidenceSummary) string {
 	}
 	parts = append(parts, displayURLPath(evidence.URL))
 	if hasDetailPrefix(evidence.Details, "headers: truncated") {
-		parts = append(parts, "(headers truncated)")
+		parts = append(parts, styleHTTPNote("(headers truncated)", options.Color))
 	}
 	if strings.Contains(strings.Join(evidence.Details, "\n"), "(truncated") {
-		parts = append(parts, "(body truncated)")
+		parts = append(parts, styleHTTPNote("(body truncated)", options.Color))
 	}
 	return strings.Join(parts, " ")
+}
+
+func styleHTTPStatus(status string, color bool) string {
+	if !color {
+		return status
+	}
+	code, err := strconv.Atoi(status)
+	if err != nil {
+		return status
+	}
+	switch {
+	case code >= 200 && code < 300:
+		return terminalColorRenderer.NewStyle().Foreground(lipgloss.Color("2")).Render(status)
+	case code >= 300 && code < 400:
+		return terminalColorRenderer.NewStyle().Foreground(lipgloss.Color("3")).Render(status)
+	case code >= 400:
+		return terminalColorRenderer.NewStyle().Foreground(lipgloss.Color("1")).Render(status)
+	default:
+		return status
+	}
+}
+
+func styleHTTPNote(note string, color bool) string {
+	if !color {
+		return note
+	}
+	return terminalColorRenderer.NewStyle().Faint(true).Render(note)
 }
 
 func renderTerminalCrawl(b *strings.Builder, evidenceRows []viewmodel.EvidenceSummary) {

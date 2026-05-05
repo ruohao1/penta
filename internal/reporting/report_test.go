@@ -47,6 +47,22 @@ func TestRenderTerminalReportIncludesSummaryAndEvidence(t *testing.T) {
 	}
 }
 
+func TestRenderTerminalReportCanColorHTTPStatusCodes(t *testing.T) {
+	summary := sampleSummary()
+
+	got := RenderTerminalReportWithOptions(summary, RenderOptions{Color: true})
+	for _, want := range []string{"\x1b[32m200\x1b[0m", "\x1b[33m302\x1b[0m"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("colored terminal report missing %q in %q", want, got)
+		}
+	}
+	for _, want := range []string{"- ", " text/html 512bytes /", " /redirect"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("colored terminal report missing compact row content %q in %q", want, got)
+		}
+	}
+}
+
 func TestRenderMarkdownReportIncludesSummaryAndEvidence(t *testing.T) {
 	summary := sampleSummary()
 
