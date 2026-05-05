@@ -2,7 +2,9 @@ package reporting
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/ruohao1/penta/internal/actions"
@@ -119,6 +121,14 @@ func renderTerminalEvidenceSections(b *strings.Builder, summary *viewmodel.RunSu
 		if len(evidenceRows) == 0 {
 			continue
 		}
+		if section.kind == "http_response" {
+			renderTerminalHTTPResponses(b, evidenceRows)
+			continue
+		}
+		if section.kind == "crawl" {
+			renderTerminalCrawl(b, evidenceRows)
+			continue
+		}
 		fprintf(b, "\n%s\n", section.title)
 		for _, evidence := range evidenceRows {
 			fprintf(b, "- %s\n", evidence.Label)
@@ -136,6 +146,121 @@ func renderTerminalEvidenceSections(b *strings.Builder, summary *viewmodel.RunSu
 			}
 		}
 	}
+}
+
+func renderTerminalHTTPResponses(b *strings.Builder, evidenceRows []viewmodel.EvidenceSummary) {
+	b.WriteString("\nHTTP Responses\n")
+	for _, evidence := range evidenceRows {
+		fprintf(b, "- %s\n", compactHTTPResponseLine(evidence))
+	}
+}
+
+func compactHTTPResponseLine(evidence viewmodel.EvidenceSummary) string {
+	status := ""
+	fields := strings.Fields(evidence.Label)
+	if len(fields) > 0 {
+		last := fields[len(fields)-1]
+		if _, err := strconv.Atoi(last); err == nil {
+			status = last
+		}
+	}
+	parts := make([]string, 0, 4)
+	if status != "" {
+		parts = append(parts, status)
+	}
+	if contentType := compactDetailValue(evidence.Details, "content-type: "); contentType != "" {
+		parts = append(parts, compactContentType(contentType))
+	}
+	if body := compactBodySize(evidence.Details); body != "" {
+		parts = append(parts, body)
+	}
+	parts = append(parts, displayURLPath(evidence.URL))
+	if hasDetailPrefix(evidence.Details, "headers: truncated") {
+		parts = append(parts, "(headers truncated)")
+	}
+	if strings.Contains(strings.Join(evidence.Details, "\n"), "(truncated") {
+		parts = append(parts, "(body truncated)")
+	}
+	return strings.Join(parts, " ")
+}
+
+func renderTerminalCrawl(b *strings.Builder, evidenceRows []viewmodel.EvidenceSummary) {
+	unique := map[string]bool{}
+	for _, evidence := range evidenceRows {
+		for _, detail := range evidence.Details {
+			if detail != "" {
+				unique[detail] = true
+			}
+		}
+	}
+	urls := sortedKeys(unique)
+	fprintf(b, "\nCrawl\n")
+	fprintf(b, "%d unique URLs discovered from %d pages\n", len(urls), len(evidenceRows))
+	for _, value := range urls {
+		fprintf(b, "- %s\n", displayURLPath(value))
+	}
+}
+
+func compactDetailValue(details []string, prefix string) string {
+	for _, detail := range details {
+		if strings.HasPrefix(detail, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(detail, prefix))
+		}
+	}
+	return ""
+}
+
+func compactContentType(value string) string {
+	value = strings.TrimSpace(strings.Split(value, ";")[0])
+	if value == "" {
+		return "unknown"
+	}
+	return value
+}
+
+func compactBodySize(details []string) string {
+	body := compactDetailValue(details, "body: ")
+	if body == "" {
+		return ""
+	}
+	fields := strings.Fields(body)
+	if len(fields) >= 2 {
+		return fields[0] + fields[1]
+	}
+	return body
+}
+
+func hasDetailPrefix(details []string, prefix string) bool {
+	for _, detail := range details {
+		if strings.HasPrefix(detail, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func displayURLPath(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return value
+	}
+	path := parsed.EscapedPath()
+	if path == "" {
+		path = "/"
+	}
+	if parsed.RawQuery != "" {
+		path += "?" + parsed.RawQuery
+	}
+	return path
+}
+
+func sortedKeys(values map[string]bool) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func renderMarkdownEvidenceSections(b *strings.Builder, summary *viewmodel.RunSummary) {

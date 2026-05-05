@@ -18,7 +18,7 @@ func TestRenderTerminalReportIncludesSummaryAndEvidence(t *testing.T) {
 		"Run        run_1",
 		"Status     completed",
 		"Tasks      2 completed / 1 failed / 0 pending",
-		"Evidence   1 target / 1 dns_record / 1 service / 1 http_response",
+		"Evidence   1 target / 1 dns_record / 1 service / 2 http_response / 2 crawl",
 		"Database   /tmp/penta.db",
 		"Targets",
 		"- domain example.com",
@@ -28,11 +28,21 @@ func TestRenderTerminalReportIncludesSummaryAndEvidence(t *testing.T) {
 		"Services",
 		"- https://example.com",
 		"HTTP Responses",
-		"- https://example.com 200",
-		"  content-type: text/html",
+		"- 200 text/html 512bytes /",
+		"- 302 /redirect",
+		"Crawl",
+		"3 unique URLs discovered from 2 pages",
+		"- /docs",
+		"- /login",
+		"- /secret",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("terminal report missing %q in %q", want, got)
+		}
+	}
+	for _, unwanted := range []string{"sha256:", "body artifact:"} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("terminal report should hide %q in %q", unwanted, got)
 		}
 	}
 }
@@ -57,6 +67,11 @@ func TestRenderMarkdownReportIncludesSummaryAndEvidence(t *testing.T) {
 		"## HTTP Responses",
 		"- [https://example.com 200](https://example.com)",
 		"  - content-type: text/html",
+		"  - sha256: abc123",
+		"  - body artifact: artifact_1",
+		"## Crawl",
+		"- [2 urls from https://example.com/](https://example.com/)",
+		"  - https://example.com/login",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("markdown report missing %q in %q", want, got)
@@ -119,13 +134,17 @@ func sampleSummary() *viewmodel.RunSummary {
 			"target":        1,
 			"dns_record":    1,
 			"service":       1,
-			"http_response": 1,
+			"http_response": 2,
+			"crawl":         2,
 		},
 		Evidence: []viewmodel.EvidenceSummary{
 			{ID: "evidence_1", Kind: "target", Label: "domain example.com"},
 			{ID: "evidence_2", Kind: "dns_record", Label: "example.com", Details: []string{"A example.com -> 93.184.216.34"}},
 			{ID: "evidence_3", Kind: "service", Label: "https://example.com", URL: "https://example.com"},
-			{ID: "evidence_4", Kind: "http_response", Label: "https://example.com 200", URL: "https://example.com", Details: []string{"content-type: text/html"}},
+			{ID: "evidence_4", Kind: "http_response", Label: "https://example.com 200", URL: "https://example.com", Details: []string{"content-type: text/html; charset=utf-8", "body: 512 bytes", "sha256: abc123", "body artifact: artifact_1"}},
+			{ID: "evidence_5", Kind: "http_response", Label: "https://example.com/redirect 302", URL: "https://example.com/redirect"},
+			{ID: "evidence_6", Kind: "crawl", Label: "2 urls from https://example.com/", URL: "https://example.com/", Details: []string{"https://example.com/login", "https://example.com/docs"}},
+			{ID: "evidence_7", Kind: "crawl", Label: "2 urls from https://example.com/docs", URL: "https://example.com/docs", Details: []string{"https://example.com/login", "https://example.com/secret"}},
 		},
 	}
 }
