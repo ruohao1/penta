@@ -22,7 +22,13 @@ import (
 	"github.com/ruohao1/penta/internal/viewmodel"
 )
 
-const maxBodyBytes = 1 << 20
+const (
+	maxBodyBytes        = 1 << 20
+	maxHeaderCount      = 64
+	maxHeaderValues     = 16
+	maxHeaderValueBytes = 1024
+	redactedHeaderValue = "[REDACTED]"
+)
 
 type ipResolver func(context.Context, string) ([]netip.Addr, error)
 
@@ -66,18 +72,24 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 		return fmt.Errorf("read http response %s: %w", requestURL, err)
 	}
 	bodyBytes := int64(len(body))
-	if bodyBytes > maxBodyBytes {
+	bodyTruncated := bodyBytes > maxBodyBytes
+	if bodyTruncated {
 		body = body[:maxBodyBytes]
 		bodyBytes = maxBodyBytes
 	}
+	responseHeaders, headersTruncated := headers(resp.Header)
 	sum := sha256.Sum256(body)
 	evidenceData := Evidence{
-		URL:         requestURL,
-		StatusCode:  resp.StatusCode,
-		Headers:     headers(resp.Header),
-		ContentType: resp.Header.Get("Content-Type"),
-		BodyBytes:   bodyBytes,
-		BodySHA256:  hex.EncodeToString(sum[:]),
+		URL:                requestURL,
+		StatusCode:         resp.StatusCode,
+		Headers:            responseHeaders,
+		HeadersTruncated:   headersTruncated,
+		ContentType:        resp.Header.Get("Content-Type"),
+		ContentLength:      positiveContentLength(resp.ContentLength),
+		BodyBytes:          bodyBytes,
+		BodyReadLimitBytes: maxBodyBytes,
+		BodyTruncated:      bodyTruncated,
+		BodySHA256:         hex.EncodeToString(sum[:]),
 	}
 	evidenceJSON, err := json.Marshal(evidenceData)
 	if err != nil {
@@ -139,12 +151,53 @@ func newHTTPClient(db *sqlite.DB, run *sqlite.Run) *http.Client {
 	}
 }
 
-func headers(values http.Header) []model.HTTPHeader {
-	headers := make([]model.HTTPHeader, 0, len(values))
+func headers(values http.Header) ([]model.HTTPHeader, bool) {
+	headers := make([]model.HTTPHeader, 0, min(len(values), maxHeaderCount))
+	truncated := len(values) > maxHeaderCount
+	count := 0
 	for name, vals := range values {
-		headers = append(headers, model.HTTPHeader{Name: name, Values: vals})
+		if count >= maxHeaderCount {
+			break
+		}
+		count++
+		cappedValues := headerValues(name, vals)
+		if len(vals) > len(cappedValues) {
+			truncated = true
+		}
+		headers = append(headers, model.HTTPHeader{Name: name, Values: cappedValues})
 	}
-	return headers
+	return headers, truncated
+}
+
+func headerValues(name string, values []string) []string {
+	if sensitiveHeader(name) {
+		return []string{redactedHeaderValue}
+	}
+	limit := min(len(values), maxHeaderValues)
+	capped := make([]string, 0, limit)
+	for _, value := range values[:limit] {
+		if len(value) > maxHeaderValueBytes {
+			value = value[:maxHeaderValueBytes]
+		}
+		capped = append(capped, value)
+	}
+	return capped
+}
+
+func sensitiveHeader(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "authorization", "proxy-authorization", "set-cookie", "www-authenticate", "proxy-authenticate":
+		return true
+	default:
+		return false
+	}
+}
+
+func positiveContentLength(value int64) int64 {
+	if value > 0 {
+		return value
+	}
+	return 0
 }
 
 type networkGuard struct {

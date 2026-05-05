@@ -77,8 +77,20 @@ func EvidenceSummaryFor(evidence sqlite.Evidence) (EvidenceSummary, error) {
 		if response.ContentType != "" {
 			summary.Details = append(summary.Details, "content-type: "+response.ContentType)
 		}
+		if response.ContentLength > 0 {
+			summary.Details = append(summary.Details, fmt.Sprintf("content-length: %d bytes", response.ContentLength))
+		}
 		if response.BodyBytes > 0 {
-			summary.Details = append(summary.Details, fmt.Sprintf("body: %d bytes", response.BodyBytes))
+			bodyDetail := fmt.Sprintf("body: %d bytes", response.BodyBytes)
+			if response.BodyTruncated {
+				bodyDetail += fmt.Sprintf(" (truncated at %d bytes)", response.BodyReadLimitBytes)
+			}
+			summary.Details = append(summary.Details, bodyDetail)
+		} else if response.BodyReadLimitBytes > 0 && response.BodyTruncated {
+			summary.Details = append(summary.Details, fmt.Sprintf("body: truncated at %d bytes", response.BodyReadLimitBytes))
+		}
+		if response.HeadersTruncated {
+			summary.Details = append(summary.Details, "headers: truncated")
 		}
 		if response.BodySHA256 != "" {
 			summary.Details = append(summary.Details, "sha256: "+response.BodySHA256)

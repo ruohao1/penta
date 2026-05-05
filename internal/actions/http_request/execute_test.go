@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -38,8 +39,58 @@ func TestExecuteGETCreatesHTTPResponseEvidence(t *testing.T) {
 
 	evidence := taskHTTPResponseEvidence(t, db, task.ID)
 	wantSHA := sha256.Sum256([]byte("hello root"))
-	if evidence.URL != server.URL+"/" || evidence.StatusCode != http.StatusAccepted || evidence.ContentType != "text/html" || evidence.BodyBytes != int64(len("hello root")) || evidence.BodySHA256 != hex.EncodeToString(wantSHA[:]) {
+	if evidence.URL != server.URL+"/" || evidence.StatusCode != http.StatusAccepted || evidence.ContentType != "text/html" || evidence.BodyBytes != int64(len("hello root")) || evidence.BodyReadLimitBytes != maxBodyBytes || evidence.BodyTruncated || evidence.BodySHA256 != hex.EncodeToString(wantSHA[:]) {
 		t.Fatalf("unexpected evidence: %+v", evidence)
+	}
+}
+
+func TestExecuteCapsAndRedactsResponseHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Set-Cookie", "session=secret")
+		for i := 0; i < maxHeaderCount+1; i++ {
+			w.Header().Set(fmt.Sprintf("X-Fill-%d", i), strings.Repeat("v", maxHeaderValueBytes+10))
+		}
+		_, _ = w.Write([]byte("headers"))
+	}))
+	defer server.Close()
+	db := openHTTPRequestTestDB(t)
+	task := createScopedHTTPRequestTask(t, db, Input{Method: "GET", URL: server.URL}, hostFromURL(t, server.URL))
+
+	if err := Execute(context.Background(), db, nil, task); err != nil {
+		t.Fatalf("execute http request: %v", err)
+	}
+	evidence := taskHTTPResponseEvidence(t, db, task.ID)
+	if !evidence.HeadersTruncated || len(evidence.Headers) > maxHeaderCount {
+		t.Fatalf("expected capped truncated headers: %+v", evidence.Headers)
+	}
+	for _, header := range evidence.Headers {
+		if strings.EqualFold(header.Name, "Set-Cookie") && (len(header.Values) != 1 || header.Values[0] != redactedHeaderValue) {
+			t.Fatalf("expected Set-Cookie redacted: %+v", header)
+		}
+		for _, value := range header.Values {
+			if len(value) > maxHeaderValueBytes {
+				t.Fatalf("header value was not capped: %d", len(value))
+			}
+		}
+	}
+}
+
+func TestExecuteRecordsBodyTruncationMetadata(t *testing.T) {
+	body := strings.Repeat("a", maxBodyBytes+1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+	db := openHTTPRequestTestDB(t)
+	task := createScopedHTTPRequestTask(t, db, Input{Method: "GET", URL: server.URL}, hostFromURL(t, server.URL))
+
+	if err := Execute(context.Background(), db, nil, task); err != nil {
+		t.Fatalf("execute http request: %v", err)
+	}
+	evidence := taskHTTPResponseEvidence(t, db, task.ID)
+	wantSHA := sha256.Sum256([]byte(body[:maxBodyBytes]))
+	if !evidence.BodyTruncated || evidence.BodyBytes != maxBodyBytes || evidence.BodyReadLimitBytes != maxBodyBytes || evidence.BodySHA256 != hex.EncodeToString(wantSHA[:]) {
+		t.Fatalf("unexpected truncation evidence: %+v", evidence)
 	}
 }
 

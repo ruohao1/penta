@@ -52,11 +52,14 @@ func TestEvidenceSummaryFormatsDNSRecordsAsDetails(t *testing.T) {
 }
 
 func TestEvidenceSummaryFormatsHTTPResponse(t *testing.T) {
-	summary := evidenceSummaryForTest(t, sqlite.Evidence{Kind: "http_response", DataJSON: `{"url":"https://example.com","status_code":200,"content_type":"text/html","body_bytes":512,"body_sha256":"abc123","body_artifact_id":"artifact_1"}`})
+	summary := evidenceSummaryForTest(t, sqlite.Evidence{Kind: "http_response", DataJSON: `{"url":"https://example.com","status_code":200,"content_type":"text/html","content_length":1024,"body_bytes":512,"body_read_limit_bytes":512,"body_truncated":true,"headers_truncated":true,"body_sha256":"abc123","body_artifact_id":"artifact_1"}`})
 	if summary.Label != "https://example.com 200" || summary.URL != "https://example.com" {
 		t.Fatalf("unexpected http response summary: %+v", summary)
 	}
-	wantDetails := []string{"content-type: text/html", "body: 512 bytes", "sha256: abc123", "body artifact: artifact_1"}
+	wantDetails := []string{"content-type: text/html", "content-length: 1024 bytes", "body: 512 bytes (truncated at 512 bytes)", "headers: truncated", "sha256: abc123", "body artifact: artifact_1"}
+	if len(summary.Details) != len(wantDetails) {
+		t.Fatalf("unexpected http details: %+v", summary.Details)
+	}
 	for i, want := range wantDetails {
 		if summary.Details[i] != want {
 			t.Fatalf("unexpected http detail %d: got %q want %q", i, summary.Details[i], want)
