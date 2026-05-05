@@ -42,6 +42,7 @@ func TestSessionShowIncludesRunTaskAndEvidenceSummary(t *testing.T) {
 	sessionID := firstSessionID(t, app)
 	target := newReconHTTPServer(t)
 	createTestScopeRule(t, app, sessionID, "scope_include", "include", "url", target)
+	createTestScopeRule(t, app, sessionID, "scope_local", "include", "ip", hostFromURL(t, target))
 	cmd := newReconCommand(app)
 	cmd.SetArgs([]string{"--session", sessionID, target, "-q"})
 	if err := cmd.Execute(); err != nil {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ruohao1/penta/internal/actions"
-	fetchroot "github.com/ruohao1/penta/internal/actions/fetch_root"
+	httprequest "github.com/ruohao1/penta/internal/actions/http_request"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
 	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
 	seedtarget "github.com/ruohao1/penta/internal/actions/seed_target"
@@ -26,10 +26,10 @@ var defaultRegistry = mustRegistry(builtInRegistry())
 
 func builtInRegistry() Registry {
 	return Registry{
-		actions.ActionSeedTarget: {Spec: seedtarget.Spec, Handler: seedtarget.Execute},
-		actions.ActionProbeHTTP:  {Spec: probehttp.Spec, Handler: probehttp.Execute},
-		actions.ActionResolveDNS: {Spec: resolvedns.Spec, Handler: resolvedns.Execute},
-		actions.ActionFetchRoot:  {Spec: fetchroot.Spec, Handler: fetchroot.Execute},
+		actions.ActionSeedTarget:  {Spec: seedtarget.Spec, Handler: seedtarget.Execute},
+		actions.ActionProbeHTTP:   {Spec: probehttp.Spec, Handler: probehttp.Execute},
+		actions.ActionResolveDNS:  {Spec: resolvedns.Spec, Handler: resolvedns.Execute},
+		actions.ActionHTTPRequest: {Spec: httprequest.Spec, Handler: httprequest.Execute},
 	}
 }
 

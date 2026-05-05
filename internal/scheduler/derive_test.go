@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ruohao1/penta/internal/actions"
-	fetchroot "github.com/ruohao1/penta/internal/actions/fetch_root"
+	httprequest "github.com/ruohao1/penta/internal/actions/http_request"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
 	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
 	"github.com/ruohao1/penta/internal/model"
@@ -59,7 +59,7 @@ func TestDeriveFromEvidenceIgnoresNonTargetEvidence(t *testing.T) {
 	}
 }
 
-func TestDeriveFromServiceEvidenceCreatesFetchRoot(t *testing.T) {
+func TestDeriveFromServiceEvidenceCreatesHTTPRequest(t *testing.T) {
 	service := model.Service{Scheme: "https", Host: "example.com", Port: 443}
 	data, err := json.Marshal(service)
 	if err != nil {
@@ -69,18 +69,18 @@ func TestDeriveFromServiceEvidenceCreatesFetchRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("derive service evidence: %v", err)
 	}
-	candidate := findCandidate(t, candidates, actions.ActionFetchRoot)
+	candidate := findCandidate(t, candidates, actions.ActionHTTPRequest)
 	if len(candidate.ParentEvidenceIDs) != 1 || candidate.ParentEvidenceIDs[0] != "evidence_service" {
 		t.Fatalf("unexpected parent evidence IDs: %+v", candidate.ParentEvidenceIDs)
 	}
-	var input fetchroot.Input
+	var input httprequest.Input
 	if err := json.Unmarshal([]byte(candidate.InputJSON), &input); err != nil {
-		t.Fatalf("unmarshal fetch root input: %v", err)
+		t.Fatalf("unmarshal http request input: %v", err)
 	}
-	if input != service {
-		t.Fatalf("unexpected fetch root input: %+v", input)
+	if input.Method != "GET" || input.URL != "https://example.com:443/" {
+		t.Fatalf("unexpected http request input: %+v", input)
 	}
-	assertCandidateTarget(t, candidate, "https://example.com:443", targets.TypeURL)
+	assertCandidateTarget(t, candidate, "https://example.com:443/", targets.TypeURL)
 }
 
 func TestDeriveFromEvidenceRejectsInvalidTargetJSON(t *testing.T) {

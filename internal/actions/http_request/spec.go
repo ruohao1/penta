@@ -1,11 +1,11 @@
-package fetch_root
+package http_request
 
 import "github.com/ruohao1/penta/internal/actions"
 
-const InputKind = "fetch_root.input"
+const InputKind = "http_request.input"
 
 var Spec = actions.ActionSpec{
-	Type:       actions.ActionFetchRoot,
+	Type:       actions.ActionHTTPRequest,
 	Permission: actions.PermissionSafeProbe,
 	InputKind:  InputKind,
 	RequiresEvidence: []actions.EvidenceRequirement{

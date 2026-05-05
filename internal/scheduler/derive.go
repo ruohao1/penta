@@ -3,9 +3,12 @@ package scheduler
 import (
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 
 	"github.com/ruohao1/penta/internal/actions"
-	fetchroot "github.com/ruohao1/penta/internal/actions/fetch_root"
+	httprequest "github.com/ruohao1/penta/internal/actions/http_request"
 	probehttp "github.com/ruohao1/penta/internal/actions/probe_http"
 	resolvedns "github.com/ruohao1/penta/internal/actions/resolve_dns"
 	"github.com/ruohao1/penta/internal/model"
@@ -65,11 +68,12 @@ func deriveServiceCandidates(evidence sqlite.Evidence) ([]CandidateTask, error) 
 	if service.Scheme != "http" && service.Scheme != "https" {
 		return nil, nil
 	}
-	inputJSON, err := json.Marshal(fetchroot.Input(service))
+	requestURL := serviceRootURL(service)
+	inputJSON, err := json.Marshal(httprequest.Input{Method: "GET", URL: requestURL})
 	if err != nil {
 		return nil, err
 	}
-	return []CandidateTask{{ActionType: actions.ActionFetchRoot, InputJSON: string(inputJSON), Reason: "HTTP service root can be fetched", ParentEvidenceIDs: []string{evidence.ID}, Target: serviceTargetRef(service)}}, nil
+	return []CandidateTask{{ActionType: actions.ActionHTTPRequest, InputJSON: string(inputJSON), Reason: "HTTP service root can be requested", ParentEvidenceIDs: []string{evidence.ID}, Target: &model.TargetRef{Value: requestURL, Type: targets.TypeURL}}}, nil
 }
 
 func newProbeHTTPCandidate(evidenceID string, target model.TargetRef) (CandidateTask, error) {
@@ -94,9 +98,13 @@ func targetRef(target model.TargetRef) *model.TargetRef {
 }
 
 func serviceTargetRef(service model.Service) *model.TargetRef {
-	value := fmt.Sprintf("%s://%s", service.Scheme, service.Host)
+	return &model.TargetRef{Value: serviceRootURL(service), Type: targets.TypeURL}
+}
+
+func serviceRootURL(service model.Service) string {
+	host := service.Host
 	if service.Port > 0 {
-		value = fmt.Sprintf("%s:%d", value, service.Port)
+		host = net.JoinHostPort(service.Host, strconv.Itoa(service.Port))
 	}
-	return &model.TargetRef{Value: value, Type: targets.TypeURL}
+	return (&url.URL{Scheme: service.Scheme, Host: host, Path: "/"}).String()
 }

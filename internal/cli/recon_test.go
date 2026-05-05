@@ -127,12 +127,33 @@ func serviceTargetFromURL(t *testing.T, rawURL string) string {
 	return net.JoinHostPort(parsed.Hostname(), parsed.Port())
 }
 
+func hostFromURL(t *testing.T, rawURL string) string {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse url: %v", err)
+	}
+	return parsed.Hostname()
+}
+
+func createLocalScopedSession(t *testing.T, app *App, rawURL string) string {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse local target url: %v", err)
+	}
+	sessionID := createTestSession(t, app, "Local", "lab")
+	createTestScopeRule(t, app, sessionID, "scope_include", "include", "ip", parsed.Hostname())
+	return sessionID
+}
+
 func TestReconCommandCreatesRunTaskArtifactAndEvidence(t *testing.T) {
 	app := openTestApp(t)
 	cmd := newReconCommand(app)
 	target := newReconHTTPServer(t)
 	host, scheme, port := servicePartsFromURL(t, target)
-	cmd.SetArgs([]string{target})
+	sessionID := createLocalScopedSession(t, app, target)
+	cmd.SetArgs([]string{"--session", sessionID, target})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute recon command: %v", err)
@@ -234,7 +255,8 @@ func TestReconCommandWritesMarkdownReport(t *testing.T) {
 	reportPath := filepath.Join(t.TempDir(), "report.md")
 	target := newReconHTTPServer(t)
 	host, scheme, port := servicePartsFromURL(t, target)
-	cmd.SetArgs([]string{"--no-color", "-o", reportPath, target})
+	sessionID := createLocalScopedSession(t, app, target)
+	cmd.SetArgs([]string{"--no-color", "--session", sessionID, "-o", reportPath, target})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute recon command: %v", err)
@@ -263,7 +285,8 @@ func TestReconCommandRedactsFinalAndMarkdownReports(t *testing.T) {
 	cmd.SetOut(&out)
 	reportPath := filepath.Join(t.TempDir(), "report.md")
 	target := newReconHTTPServer(t) + "?token=target-secret"
-	cmd.SetArgs([]string{"--no-color", "--redact-report", "-o", reportPath, target})
+	sessionID := createLocalScopedSession(t, app, target)
+	cmd.SetArgs([]string{"--no-color", "--session", sessionID, "--redact-report", "-o", reportPath, target})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute recon command: %v", err)
@@ -291,6 +314,7 @@ func TestReconCommandAttachesRunToSession(t *testing.T) {
 	sessionID := createTestSession(t, app, "Acme", "bugbounty")
 	target := newReconHTTPServer(t)
 	createTestScopeRule(t, app, sessionID, "scope_include", "include", "url", target)
+	createTestScopeRule(t, app, sessionID, "scope_local", "include", "ip", hostFromURL(t, target))
 	cmd := newReconCommand(app)
 	var out bytes.Buffer
 	cmd.SetOut(&out)

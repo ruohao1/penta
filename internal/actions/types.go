@@ -3,11 +3,11 @@ package actions
 type ActionType string
 
 const (
-	ActionSeedTarget ActionType = "seed_target"
-	ActionProbeHTTP  ActionType = "probe_http"
-	ActionResolveDNS ActionType = "resolve_dns"
-	ActionFetchRoot  ActionType = "fetch_root"
-	ActionCrawl      ActionType = "crawl"
+	ActionSeedTarget  ActionType = "seed_target"
+	ActionProbeHTTP   ActionType = "probe_http"
+	ActionResolveDNS  ActionType = "resolve_dns"
+	ActionHTTPRequest ActionType = "http_request"
+	ActionCrawl       ActionType = "crawl"
 )
 
 type TaskStatus string
