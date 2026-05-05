@@ -44,6 +44,7 @@ func newEvidenceListCommand(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&runSelector, "run", "latest", "run id or latest")
+	registerRunFlagCompletion(cmd, app)
 	return cmd
 }
 
@@ -95,5 +96,9 @@ func newEvidenceShowCommand(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&runSelector, "run", "latest", "run id or latest")
+	registerRunFlagCompletion(cmd, app)
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeEvidenceSelectors(cmd, app, runSelector, args, toComplete)
+	}
 	return cmd
 }
