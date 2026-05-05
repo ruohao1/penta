@@ -252,6 +252,14 @@ func TestTaskArtifactAndEvidenceCRUD(t *testing.T) {
 		t.Fatalf("unexpected artifact: %+v", artifacts[0])
 	}
 
+	runArtifacts, err := db.ListArtifactsByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("list artifacts by run: %v", err)
+	}
+	if len(runArtifacts) != 1 || runArtifacts[0].ID != artifact.ID || runArtifacts[0].TaskID != task.ID {
+		t.Fatalf("unexpected run artifacts: %+v", runArtifacts)
+	}
+
 	evidence := Evidence{
 		ID:        "ev_1",
 		RunID:     run.ID,
@@ -292,6 +300,45 @@ func TestTaskArtifactAndEvidenceCRUD(t *testing.T) {
 	}
 	if !evidenceRows[0].CreatedAt.Equal(evidence.CreatedAt) {
 		t.Fatalf("unexpected evidence created_at: got %v want %v", evidenceRows[0].CreatedAt, evidence.CreatedAt)
+	}
+}
+
+func TestListArtifactsByRunFiltersRunAndOrdersByArtifactCreatedAt(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	for _, runID := range []string{"run_1", "run_2"} {
+		run := Run{ID: runID, Mode: "recon", Status: actions.RunStatusCompleted, CreatedAt: now}
+		if err := db.CreateRun(ctx, run); err != nil {
+			t.Fatalf("create run %s: %v", runID, err)
+		}
+	}
+	for _, task := range []Task{
+		{ID: "task_1", RunID: "run_1", ActionType: actions.ActionType("http_request"), InputJSON: `{"url":"http://example.com/one"}`, Status: actions.TaskStatusCompleted, CreatedAt: now},
+		{ID: "task_2", RunID: "run_1", ActionType: actions.ActionType("http_request"), InputJSON: `{"url":"http://example.com/two"}`, Status: actions.TaskStatusCompleted, CreatedAt: now},
+		{ID: "task_other", RunID: "run_2", ActionType: actions.ActionType("http_request"), InputJSON: `{"url":"http://other.example/"}`, Status: actions.TaskStatusCompleted, CreatedAt: now},
+	} {
+		if err := db.CreateTask(ctx, task); err != nil {
+			t.Fatalf("create task %s: %v", task.ID, err)
+		}
+	}
+	for _, artifact := range []Artifact{
+		{ID: "artifact_later", TaskID: "task_1", Path: "/tmp/later.html", CreatedAt: now.Add(time.Second)},
+		{ID: "artifact_other", TaskID: "task_other", Path: "/tmp/other.html", CreatedAt: now.Add(-time.Hour)},
+		{ID: "artifact_earlier", TaskID: "task_2", Path: "/tmp/earlier.html", CreatedAt: now},
+	} {
+		if err := db.CreateArtifact(ctx, artifact); err != nil {
+			t.Fatalf("create artifact %s: %v", artifact.ID, err)
+		}
+	}
+
+	artifacts, err := db.ListArtifactsByRun(ctx, "run_1")
+	if err != nil {
+		t.Fatalf("list artifacts by run: %v", err)
+	}
+	if len(artifacts) != 2 || artifacts[0].ID != "artifact_earlier" || artifacts[1].ID != "artifact_later" {
+		t.Fatalf("unexpected artifacts: %+v", artifacts)
 	}
 }
 

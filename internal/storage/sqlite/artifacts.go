@@ -58,3 +58,27 @@ func (db *DB) ListArtifactsByTask(ctx context.Context, taskID string) ([]Artifac
 	}
 	return artifacts, rows.Err()
 }
+
+func (db *DB) ListArtifactsByRun(ctx context.Context, runID string) ([]Artifact, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT artifacts.id, artifacts.task_id, artifacts.path, artifacts.created_at
+		FROM artifacts
+		JOIN tasks ON artifacts.task_id = tasks.id
+		WHERE tasks.run_id = ?
+		ORDER BY artifacts.created_at ASC
+	`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var artifacts []Artifact
+	for rows.Next() {
+		var artifact Artifact
+		if err := rows.Scan(&artifact.ID, &artifact.TaskID, &artifact.Path, &artifact.CreatedAt); err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, artifact)
+	}
+	return artifacts, rows.Err()
+}
