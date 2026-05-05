@@ -38,7 +38,7 @@ func NewPentaCommand() *cobra.Command {
 	}
 	app.Sinks = output.New(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
-	cmd.AddCommand(newReconCommand(app), newSessionCommand(app))
+	cmd.AddCommand(newReconCommand(app), newSessionCommand(app), newEvidenceCommand(app))
 
 	return cmd
 }

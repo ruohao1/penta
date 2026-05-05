@@ -26,6 +26,20 @@ func (db *DB) CreateEvidence(ctx context.Context, evidence Evidence) error {
 	return err
 }
 
+func (db *DB) GetEvidence(ctx context.Context, id string) (*Evidence, error) {
+	row := db.QueryRowContext(ctx, `
+		SELECT id, run_id, task_id, kind, data_json, created_at
+		FROM evidence
+		WHERE id = ?
+	`, id)
+
+	var evidence Evidence
+	if err := row.Scan(&evidence.ID, &evidence.RunID, &evidence.TaskID, &evidence.Kind, &evidence.DataJSON, &evidence.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &evidence, nil
+}
+
 func (db *DB) ListEvidenceByRun(ctx context.Context, runID string) ([]Evidence, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT id, run_id, task_id, kind, data_json, created_at

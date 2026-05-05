@@ -56,6 +56,44 @@ func TestOpenInitializesSchema(t *testing.T) {
 	}
 }
 
+func TestListRunsAndLatestRunOrderByNewestFirst(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	older := Run{ID: "run_old", Mode: "recon", Status: actions.RunStatusCompleted, CreatedAt: now.Add(-time.Hour)}
+	newer := Run{ID: "run_new", Mode: "recon", Status: actions.RunStatusRunning, CreatedAt: now}
+
+	if err := db.CreateRun(ctx, older); err != nil {
+		t.Fatalf("create older run: %v", err)
+	}
+	if err := db.CreateRun(ctx, newer); err != nil {
+		t.Fatalf("create newer run: %v", err)
+	}
+
+	runs, err := db.ListRuns(ctx)
+	if err != nil {
+		t.Fatalf("list runs: %v", err)
+	}
+	if len(runs) != 2 || runs[0].ID != newer.ID || runs[1].ID != older.ID {
+		t.Fatalf("unexpected run order: %+v", runs)
+	}
+	latest, err := db.LatestRun(ctx)
+	if err != nil {
+		t.Fatalf("latest run: %v", err)
+	}
+	if latest.ID != newer.ID {
+		t.Fatalf("unexpected latest run: %+v", latest)
+	}
+}
+
+func TestLatestRunReturnsNoRowsWhenEmpty(t *testing.T) {
+	db := openTestDB(t)
+	_, err := db.LatestRun(context.Background())
+	if err != sql.ErrNoRows {
+		t.Fatalf("latest empty error: got %v want sql.ErrNoRows", err)
+	}
+}
+
 func TestOpenSetsSchemaVersion(t *testing.T) {
 	db := openTestDB(t)
 
@@ -224,6 +262,14 @@ func TestTaskArtifactAndEvidenceCRUD(t *testing.T) {
 	}
 	if err := db.CreateEvidence(ctx, evidence); err != nil {
 		t.Fatalf("create evidence: %v", err)
+	}
+
+	gotEvidence, err := db.GetEvidence(ctx, evidence.ID)
+	if err != nil {
+		t.Fatalf("get evidence: %v", err)
+	}
+	if gotEvidence.ID != evidence.ID || gotEvidence.RunID != evidence.RunID || gotEvidence.TaskID != evidence.TaskID || gotEvidence.Kind != evidence.Kind || gotEvidence.DataJSON != evidence.DataJSON {
+		t.Fatalf("unexpected get evidence result: %+v", gotEvidence)
 	}
 
 	evidenceRows, err := db.ListEvidenceByRun(ctx, run.ID)

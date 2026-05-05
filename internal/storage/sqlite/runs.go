@@ -44,6 +44,47 @@ func (db *DB) GetRun(ctx context.Context, id string) (*Run, error) {
 	return &run, nil
 }
 
+func (db *DB) ListRuns(ctx context.Context) ([]Run, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, session_id, mode, status, created_at
+		FROM runs
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var runs []Run
+	for rows.Next() {
+		var run Run
+		var sessionID sql.NullString
+		if err := rows.Scan(&run.ID, &sessionID, &run.Mode, &run.Status, &run.CreatedAt); err != nil {
+			return nil, err
+		}
+		run.SessionID = stringFromNull(sessionID)
+		runs = append(runs, run)
+	}
+	return runs, rows.Err()
+}
+
+func (db *DB) LatestRun(ctx context.Context) (*Run, error) {
+	row := db.QueryRowContext(ctx, `
+		SELECT id, session_id, mode, status, created_at
+		FROM runs
+		ORDER BY created_at DESC
+		LIMIT 1
+	`)
+
+	var run Run
+	var sessionID sql.NullString
+	if err := row.Scan(&run.ID, &sessionID, &run.Mode, &run.Status, &run.CreatedAt); err != nil {
+		return nil, err
+	}
+	run.SessionID = stringFromNull(sessionID)
+	return &run, nil
+}
+
 func (db *DB) ListRunsBySession(ctx context.Context, sessionID string) ([]Run, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT id, session_id, mode, status, created_at
