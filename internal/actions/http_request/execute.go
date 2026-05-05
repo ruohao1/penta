@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/ids"
 	"github.com/ruohao1/penta/internal/model"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/viewmodel"
@@ -104,7 +104,7 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 		return err
 	}
 
-	evidence := sqlite.Evidence{ID: "evidence_" + uuid.NewString(), RunID: task.RunID, TaskID: task.ID, Kind: string(actions.EvidenceHTTPResponse), DataJSON: string(evidenceJSON), CreatedAt: time.Now()}
+	evidence := sqlite.Evidence{ID: ids.New(ids.PrefixEvidence), RunID: task.RunID, TaskID: task.ID, Kind: string(actions.EvidenceHTTPResponse), DataJSON: string(evidenceJSON), CreatedAt: time.Now()}
 	label, err := viewmodel.EvidenceLabel(evidence)
 	if err != nil {
 		return err
@@ -212,7 +212,7 @@ func createHTMLBodyArtifact(ctx context.Context, db *sqlite.DB, taskID, contentT
 	if len(body) == 0 || !isHTMLContentType(contentType) {
 		return "", nil
 	}
-	artifactID := "artifact_" + uuid.NewString()
+	artifactID := ids.New(ids.PrefixArtifact)
 	dir, err := artifactDir(ctx, db)
 	if err != nil {
 		return "", err

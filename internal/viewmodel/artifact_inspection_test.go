@@ -81,6 +81,25 @@ func TestResolveArtifactIDCanSelectNonLatestRun(t *testing.T) {
 	}
 }
 
+func TestResolveArtifactShortIDCanSelectNonLatestRun(t *testing.T) {
+	db := openEvidenceTestDB(t)
+	older := createEvidenceTestRun(t, db, "run_old", -time.Hour)
+	createArtifactInspectionItem(t, db, older.ID, "art_old", "/tmp/old.html", "http://old.example/", 0)
+	newer := createEvidenceTestRun(t, db, "run_new", 0)
+	createArtifactInspectionItem(t, db, newer.ID, "art_new", "/tmp/new.html", "http://new.example/", 0)
+
+	list, item, err := ResolveArtifact(context.Background(), db, "", "art_old")
+	if err != nil {
+		t.Fatalf("resolve short artifact id: %v", err)
+	}
+	if list.Run.ID != older.ID || list.Latest {
+		t.Fatalf("unexpected run context: %+v", list)
+	}
+	if item.Row.ID != "art_old" {
+		t.Fatalf("unexpected artifact: %+v", item)
+	}
+}
+
 func TestResolveArtifactAmbiguousBodySelectorSuggestsList(t *testing.T) {
 	db := openEvidenceTestDB(t)
 	run := createEvidenceTestRun(t, db, "run_1", 0)

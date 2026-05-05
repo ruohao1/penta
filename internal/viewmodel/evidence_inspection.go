@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ruohao1/penta/internal/apperr"
+	"github.com/ruohao1/penta/internal/ids"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 )
 
@@ -45,7 +46,7 @@ func BuildEvidenceList(ctx context.Context, db *sqlite.DB, runSelector string) (
 }
 
 func ResolveEvidence(ctx context.Context, db *sqlite.DB, runSelector, selector string) (*EvidenceList, IndexedEvidence, error) {
-	if strings.HasPrefix(selector, "evidence_") && (runSelector == "" || runSelector == "latest") {
+	if ids.IsEvidenceID(selector) && (runSelector == "" || runSelector == "latest") {
 		row, err := db.GetEvidence(ctx, selector)
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -105,7 +106,7 @@ func resolveEvidenceSelector(evidence []IndexedEvidence, selector string) (Index
 		}
 		return evidence[index-1], nil
 	}
-	if matches := matchesEvidenceID(evidence, selector); len(matches) > 0 || strings.HasPrefix(selector, "evidence_") {
+	if matches := matchesEvidenceID(evidence, selector); len(matches) > 0 || ids.IsEvidenceID(selector) {
 		return singleEvidenceMatch(selector, matches)
 	}
 	parts := strings.SplitN(selector, ":", 2)

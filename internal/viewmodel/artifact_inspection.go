@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ruohao1/penta/internal/apperr"
+	"github.com/ruohao1/penta/internal/ids"
 	"github.com/ruohao1/penta/internal/model"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 )
@@ -56,7 +57,7 @@ func BuildArtifactList(ctx context.Context, db *sqlite.DB, runSelector string) (
 }
 
 func ResolveArtifact(ctx context.Context, db *sqlite.DB, runSelector, selector string) (*ArtifactList, IndexedArtifact, error) {
-	if strings.HasPrefix(selector, "artifact_") && (runSelector == "" || runSelector == "latest") {
+	if ids.IsArtifactID(selector) && (runSelector == "" || runSelector == "latest") {
 		latest, err := BuildArtifactList(ctx, db, runSelector)
 		if err != nil {
 			return nil, IndexedArtifact{}, err
@@ -135,7 +136,7 @@ func resolveArtifactSelector(artifacts []IndexedArtifact, selector string) (Inde
 		}
 		return artifacts[index-1], nil
 	}
-	if matches := matchesArtifactID(artifacts, selector); len(matches) > 0 || strings.HasPrefix(selector, "artifact_") {
+	if matches := matchesArtifactID(artifacts, selector); len(matches) > 0 || ids.IsArtifactID(selector) {
 		return singleArtifactMatch(selector, matches)
 	}
 	parts := strings.SplitN(selector, ":", 2)

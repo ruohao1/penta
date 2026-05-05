@@ -5,7 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/ruohao1/penta/internal/actions"
+	"github.com/ruohao1/penta/internal/ids"
 	"github.com/ruohao1/penta/internal/reporting"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/viewmodel"
@@ -34,7 +37,7 @@ func newSessionCreateCommand(app *App) *cobra.Command {
 				return err
 			}
 			now := time.Now()
-			session := sqlite.Session{ID: "session_" + generateID(), Name: args[0], Kind: sessionKind, Status: sqlite.SessionStatusActive, CreatedAt: now, UpdatedAt: now}
+			session := sqlite.Session{ID: ids.New(ids.PrefixSession), Name: args[0], Kind: sessionKind, Status: sqlite.SessionStatusActive, CreatedAt: now, UpdatedAt: now}
 			if err := app.DB.CreateSession(cmd.Context(), session); err != nil {
 				return err
 			}
@@ -64,12 +67,32 @@ func newSessionListCommand(app *App) *cobra.Command {
 				sinks.Printf("No sessions\n")
 				return nil
 			}
+			rows := make([][]string, 0, len(sessions))
 			for _, session := range sessions {
-				sinks.Printf("%s\t%s\t%s\t%s\n", session.ID, session.Name, session.Kind, session.Status)
+				rows = append(rows, []string{session.ID, session.Name, string(session.Kind), string(session.Status)})
 			}
+			sinks.Printf("%s\n", renderSessionListTable(rows))
 			return nil
 		},
 	}
+}
+
+func renderSessionListTable(rows [][]string) string {
+	return table.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderColumn(false).
+		BorderRow(false).
+		BorderHeader(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			return lipgloss.NewStyle().PaddingRight(2)
+		}).
+		Headers("ID", "Name", "Kind", "Status").
+		Rows(rows...).
+		Render()
 }
 
 func newSessionShowCommand(app *App) *cobra.Command {
@@ -156,7 +179,7 @@ func newSessionScopeAddCommand(app *App) *cobra.Command {
 			if _, err := app.DB.GetSession(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			rule := sqlite.ScopeRule{ID: "scope_" + generateID(), SessionID: args[0], Effect: effect, TargetType: targetType, Value: args[2], CreatedAt: time.Now()}
+			rule := sqlite.ScopeRule{ID: ids.New(ids.PrefixScope), SessionID: args[0], Effect: effect, TargetType: targetType, Value: args[2], CreatedAt: time.Now()}
 			if err := app.DB.CreateScopeRule(cmd.Context(), rule); err != nil {
 				return err
 			}
@@ -187,12 +210,32 @@ func newSessionScopeListCommand(app *App) *cobra.Command {
 				sinks.Printf("No scope rules\n")
 				return nil
 			}
+			rows := make([][]string, 0, len(rules))
 			for _, rule := range rules {
-				sinks.Printf("%s\t%s\t%s\t%s\n", rule.ID, rule.Effect, rule.TargetType, rule.Value)
+				rows = append(rows, []string{rule.ID, string(rule.Effect), string(rule.TargetType), rule.Value})
 			}
+			sinks.Printf("%s\n", renderScopeRuleListTable(rows))
 			return nil
 		},
 	}
+}
+
+func renderScopeRuleListTable(rows [][]string) string {
+	return table.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderColumn(false).
+		BorderRow(false).
+		BorderHeader(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			return lipgloss.NewStyle().PaddingRight(2)
+		}).
+		Headers("ID", "Effect", "Type", "Value").
+		Rows(rows...).
+		Render()
 }
 
 func newSessionScopeRemoveCommand(app *App) *cobra.Command {

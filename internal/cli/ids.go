@@ -1,7 +1,7 @@
 package cli
 
-import "github.com/google/uuid"
+import "github.com/ruohao1/penta/internal/ids"
 
 func generateID() string {
-	return uuid.NewString()
+	return ids.Token()
 }

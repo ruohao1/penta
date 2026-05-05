@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/ruohao1/penta/internal/actions"
 	httprequest "github.com/ruohao1/penta/internal/actions/http_request"
 	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/ids"
 	"github.com/ruohao1/penta/internal/policy"
 	"github.com/ruohao1/penta/internal/scheduler"
 	"github.com/ruohao1/penta/internal/scope"
@@ -97,7 +97,7 @@ func (f Frontier) registry() Registry {
 
 func (f Frontier) enqueueTask(ctx context.Context, runID string, actionType actions.ActionType, inputJSON string) error {
 	task := sqlite.Task{
-		ID:         "task_" + uuid.NewString(),
+		ID:         ids.New(ids.PrefixTask),
 		RunID:      runID,
 		ActionType: actionType,
 		InputJSON:  inputJSON,

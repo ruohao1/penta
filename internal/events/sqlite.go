@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/google/uuid"
+	"github.com/ruohao1/penta/internal/ids"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 )
 
@@ -33,7 +33,7 @@ func (s *SQLiteSink) Append(ctx context.Context, evt Event) error {
 	}
 
 	if evt.ID == "" {
-		evt.ID = "event_" + uuid.NewString()
+		evt.ID = ids.New(ids.PrefixEvent)
 	}
 	evt.Seq = nextSeq
 

@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/ruohao1/penta/internal/viewmodel"
 	"github.com/spf13/cobra"
 )
@@ -33,15 +35,34 @@ func newEvidenceListCommand(app *App) *cobra.Command {
 				sinks.Printf("No evidence\n")
 				return nil
 			}
-			sinks.Printf("#  Kind           Label\n")
+			rows := make([][]string, 0, len(list.Evidence))
 			for _, item := range list.Evidence {
-				sinks.Printf("%-2d %-14s %s\n", item.Index, item.Kind, item.Label)
+				rows = append(rows, []string{fmt.Sprintf("%d", item.Index), item.Kind, item.Label})
 			}
+			sinks.Printf("%s\n", renderEvidenceListTable(rows))
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&runSelector, "run", "latest", "run id or latest")
 	return cmd
+}
+
+func renderEvidenceListTable(rows [][]string) string {
+	return table.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderColumn(false).
+		BorderRow(false).
+		BorderHeader(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			return lipgloss.NewStyle().PaddingRight(2)
+		}).
+		Headers("#", "Kind", "Label").
+		Rows(rows...).
+		Render()
 }
 
 func newEvidenceShowCommand(app *App) *cobra.Command {

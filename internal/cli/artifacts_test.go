@@ -20,7 +20,7 @@ func TestArtifactsListUsesLatestRunContextAndMetadataOnlyRows(t *testing.T) {
 	createCLIArtifactItem(t, app, run.ID, "artifact_secret", "/tmp/secret.html", "http://localhost:8080/secret", time.Second)
 
 	out := executeArtifactsCommand(t, app, "list")
-	for _, want := range []string{"Run run_new (latest)", "#  Kind      Source   Path", "1  body      /", "/tmp/root.html", "2  body      /secret", "/tmp/secret.html"} {
+	for _, want := range []string{"Run run_new (latest)", "#  Kind", "Source", "Path", "1  body  /", "/tmp/root.html", "2  body  /secret", "/tmp/secret.html"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("artifacts list missing %q in %q", want, out)
 		}

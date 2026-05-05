@@ -81,6 +81,25 @@ func TestResolveEvidenceIDCanSelectNonLatestRun(t *testing.T) {
 	}
 }
 
+func TestResolveEvidenceShortIDCanSelectNonLatestRun(t *testing.T) {
+	db := openEvidenceTestDB(t)
+	older := createEvidenceTestRun(t, db, "run_old", -time.Hour)
+	createEvidenceTestItem(t, db, older.ID, "evd_old", "service", `{"scheme":"http","host":"old.example","port":80}`, 0)
+	newer := createEvidenceTestRun(t, db, "run_new", 0)
+	createEvidenceTestItem(t, db, newer.ID, "evd_new", "service", `{"scheme":"http","host":"new.example","port":80}`, 0)
+
+	list, item, err := ResolveEvidence(context.Background(), db, "", "evd_old")
+	if err != nil {
+		t.Fatalf("resolve short evidence id: %v", err)
+	}
+	if list.Run.ID != older.ID || list.Latest {
+		t.Fatalf("unexpected run context: %+v", list)
+	}
+	if item.ID != "evd_old" {
+		t.Fatalf("unexpected evidence: %+v", item)
+	}
+}
+
 func TestResolveEvidenceAmbiguousSelectorSuggestsList(t *testing.T) {
 	db := openEvidenceTestDB(t)
 	run := createEvidenceTestRun(t, db, "run_1", 0)

@@ -10,6 +10,7 @@ import (
 	"github.com/ruohao1/penta/internal/apperr"
 	"github.com/ruohao1/penta/internal/events"
 	"github.com/ruohao1/penta/internal/execute"
+	"github.com/ruohao1/penta/internal/ids"
 	"github.com/ruohao1/penta/internal/reporting"
 	"github.com/ruohao1/penta/internal/scope"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
@@ -218,7 +219,7 @@ func sessionIDFromSession(session *sqlite.Session) string {
 }
 
 func createRun(cmd *cobra.Command, app *App, sessionID string) (string, error) {
-	runID := "run_" + generateID()
+	runID := ids.New(ids.PrefixRun)
 	run := sqlite.Run{
 		ID:        runID,
 		SessionID: sessionID,

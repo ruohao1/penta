@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/ids"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/targets"
 	"github.com/ruohao1/penta/internal/viewmodel"
@@ -66,7 +66,7 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 	}
 
 	evidence := sqlite.Evidence{
-		ID:        "evidence_" + uuid.NewString(),
+		ID:        ids.New(ids.PrefixEvidence),
 		RunID:     task.RunID,
 		TaskID:    task.ID,
 		Kind:      "service",

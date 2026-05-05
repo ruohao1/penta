@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/ruohao1/penta/internal/viewmodel"
 	"github.com/spf13/cobra"
 )
@@ -34,15 +36,34 @@ func newArtifactsListCommand(app *App) *cobra.Command {
 				sinks.Printf("No artifacts\n")
 				return nil
 			}
-			sinks.Printf("#  Kind      Source   Path\n")
+			rows := make([][]string, 0, len(list.Artifacts))
 			for _, item := range list.Artifacts {
-				sinks.Printf("%-2d %-9s %-8s %s\n", item.Index, item.Kind, item.Source, item.Row.Path)
+				rows = append(rows, []string{fmt.Sprintf("%d", item.Index), item.Kind, item.Source, item.Row.Path})
 			}
+			sinks.Printf("%s\n", renderArtifactListTable(rows))
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&runSelector, "run", "latest", "run id or latest")
 	return cmd
+}
+
+func renderArtifactListTable(rows [][]string) string {
+	return table.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderColumn(false).
+		BorderRow(false).
+		BorderHeader(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			return lipgloss.NewStyle().PaddingRight(2)
+		}).
+		Headers("#", "Kind", "Source", "Path").
+		Rows(rows...).
+		Render()
 }
 
 func newArtifactsShowCommand(app *App) *cobra.Command {

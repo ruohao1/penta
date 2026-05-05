@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/ruohao1/penta/internal/actions"
 	"github.com/ruohao1/penta/internal/events"
+	"github.com/ruohao1/penta/internal/ids"
 	"github.com/ruohao1/penta/internal/storage/sqlite"
 	"github.com/ruohao1/penta/internal/viewmodel"
 )
@@ -45,7 +45,7 @@ func Execute(ctx context.Context, db *sqlite.DB, sink events.Sink, task *sqlite.
 	if err != nil {
 		return err
 	}
-	evidence := sqlite.Evidence{ID: "evidence_" + uuid.NewString(), RunID: task.RunID, TaskID: task.ID, Kind: string(actions.EvidenceCrawl), DataJSON: string(evidenceJSON), CreatedAt: time.Now()}
+	evidence := sqlite.Evidence{ID: ids.New(ids.PrefixEvidence), RunID: task.RunID, TaskID: task.ID, Kind: string(actions.EvidenceCrawl), DataJSON: string(evidenceJSON), CreatedAt: time.Now()}
 	label, err := viewmodel.EvidenceLabel(evidence)
 	if err != nil {
 		return err
